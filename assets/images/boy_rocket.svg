@@ -1,0 +1,11 @@
+<svg viewBox="0 0 400 360" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="90" cy="120" r="40" fill="#EDE9FE" opacity="0.6"/>
+  <g transform="translate(190, 180) rotate(-35) translate(-100, -120)">
+    <path d="M 80 180 Q 100 250 100 270 Q 100 250 120 180 Z" fill="#F97316"/>
+    <path d="M 60 140 L 40 180 L 75 170 Z" fill="#3B82F6"/>
+    <path d="M 140 140 L 160 180 L 125 170 Z" fill="#3B82F6"/>
+    <path d="M 70 170 L 70 80 Q 100 10 130 80 L 130 170 Z" fill="#EF4444"/>
+    <circle cx="100" cy="100" r="22" fill="#93C5FD" stroke="#FFFFFF" stroke-width="5"/>
+    <circle cx="100" cy="96" r="12" fill="#FED7AA"/>
+  </g>
+</svg>

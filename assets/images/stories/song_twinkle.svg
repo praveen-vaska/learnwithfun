@@ -1,0 +1,17 @@
+<svg viewBox="0 0 200 140" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="skyTwinkle" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E1B4B"/>
+      <stop offset="100%" stop-color="#312E81"/>
+    </linearGradient>
+  </defs>
+  <rect width="200" height="140" rx="16" fill="url(#skyTwinkle)"/>
+  <path d="M 155 30 C 175 42 175 75 155 90 C 168 80 168 40 155 30 Z" fill="#FDE047"/>
+  <polygon points="65,35 69,45 80,45 71,51 74,62 65,55 56,62 59,51 50,45 61,45" fill="#FCD34D"/>
+  <polygon points="120,60 123,68 132,68 125,73 127,82 120,76 113,82 115,73 108,68 117,68" fill="#FDE68A"/>
+  <polygon points="35,75 37,81 44,81 39,85 41,92 35,87 29,92 31,85 26,81 33,81" fill="#FEF08A"/>
+  <circle cx="95" cy="30" r="2.5" fill="#FFFFFF"/>
+  <circle cx="170" cy="105" r="2" fill="#FFFFFF"/>
+  <circle cx="40" cy="35" r="2" fill="#FFFFFF"/>
+  <ellipse cx="100" cy="115" rx="22" ry="14" fill="#FFFFFF" opacity="0.3"/>
+</svg>

@@ -1,0 +1,9 @@
+<svg viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+  <path d="M 60 70 C 40 70 40 130 90 140" stroke="#F59E0B" stroke-width="14" stroke-linecap="round" fill="none"/>
+  <path d="M 240 70 C 260 70 260 130 210 140" stroke="#F59E0B" stroke-width="14" stroke-linecap="round" fill="none"/>
+  <path d="M 80 50 L 220 50 C 220 120 190 170 150 170 C 110 170 80 120 80 50 Z" fill="#F59E0B"/>
+  <ellipse cx="150" cy="50" rx="70" ry="12" fill="#FEF08A"/>
+  <polygon points="150,85 155,100 170,100 158,110 162,125 150,115 138,125 142,110 130,100 145,100" fill="#FFFFFF"/>
+  <rect x="140" y="170" width="20" height="40" fill="#D97706"/>
+  <rect x="110" y="210" width="80" height="35" rx="6" fill="#1F2937"/>
+</svg>

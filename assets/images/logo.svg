@@ -1,0 +1,26 @@
+<svg viewBox="0 0 400 120" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gradP" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8B5CF6"/>
+      <stop offset="100%" stop-color="#6D28D9"/>
+    </linearGradient>
+    <linearGradient id="gradY" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FCD34D"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(10, 10)">
+    <circle cx="50" cy="50" r="45" fill="url(#gradP)"/>
+    <path d="M 25 65 Q 50 55 50 35 Q 50 55 75 65 L 75 40 Q 50 30 50 15 Q 50 30 25 40 Z" fill="#FFF4E9"/>
+    <circle cx="50" cy="30" r="14" fill="#FFE16A"/>
+    <circle cx="45" cy="28" r="2" fill="#292536"/>
+    <circle cx="55" cy="28" r="2" fill="#292536"/>
+    <path d="M 47 34 Q 50 37 53 34" stroke="#292536" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+  </g>
+  <text x="120" y="55" font-family="Nunito, Arial, sans-serif" font-weight="900" font-size="38" fill="#7952F5">Learn</text>
+  <text x="235" y="55" font-family="Nunito, Arial, sans-serif" font-weight="900" font-size="38" fill="#F59E0B">With</text>
+  <text x="325" y="55" font-family="Nunito, Arial, sans-serif" font-weight="900" font-size="38" fill="#10B981">Fun</text>
+  <text x="122" y="85" font-family="Nunito, Arial, sans-serif" font-weight="700" font-size="16" fill="#8B5CF6" letter-spacing="1.5">KIDS SMART LEARNING APP</text>
+  <path d="M 380 25 Q 385 15 390 25 Q 385 35 380 25 Z" fill="#FFE16A"/>
+  <path d="M 115 20 Q 118 12 121 20 Q 118 28 115 20 Z" fill="#FFB7CB"/>
+</svg>
