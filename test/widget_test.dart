@@ -117,26 +117,25 @@ void main() {
     expect(find.text('Play ▶'), findsOneWidget);
   });
 
-  testWidgets(
-    'MemoryMatchScreen renders 10 progressive levels and level map',
-    (WidgetTester tester) async {
-      final storage = LocalStorageService();
-      await storage.init();
-      final userRepo = MockUserRepository(storage);
+  testWidgets('MemoryMatchScreen renders 10 progressive levels and level map', (
+    WidgetTester tester,
+  ) async {
+    final storage = LocalStorageService();
+    await storage.init();
+    final userRepo = MockUserRepository(storage);
 
-      await tester.pumpWidget(
-        BlocProvider(
-          create: (_) => UserCubit(userRepo),
-          child: const MaterialApp(home: MemoryMatchScreen()),
-        ),
-      );
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      BlocProvider(
+        create: (_) => UserCubit(userRepo),
+        child: const MaterialApp(home: MemoryMatchScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.text('Match Pairs Levels'), findsOneWidget);
-      expect(find.text('Solve Level to Unlock Next! 🚀'), findsOneWidget);
-      expect(find.text('Level 1'), findsOneWidget);
-      expect(find.text('Baby Farm'), findsOneWidget);
-      expect(find.text('Play ▶'), findsOneWidget);
-    },
-  );
+    expect(find.text('Match Pairs Levels'), findsOneWidget);
+    expect(find.text('Solve Level to Unlock Next! 🚀'), findsOneWidget);
+    expect(find.text('Level 1'), findsOneWidget);
+    expect(find.text('Baby Farm'), findsOneWidget);
+    expect(find.text('Play ▶'), findsOneWidget);
+  });
 }

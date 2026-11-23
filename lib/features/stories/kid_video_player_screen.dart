@@ -178,8 +178,8 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
                         style.type = 'text/css';
                         (document.head || document.documentElement).appendChild(style);
                       }
-                      if (style.innerHTML !== css) {
-                        style.innerHTML = css;
+                      if (style.textContent !== css) {
+                        style.textContent = css;
                       }
                     } catch(e) {}
                   }
@@ -258,7 +258,7 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
                     });
                   } catch(e) {}
 
-                  setInterval(purgeUnwanted, 120);
+                  setInterval(purgeUnwanted, 400);
 
                   var vAttempts = 0;
                   var vTimer = setInterval(function() {
@@ -296,21 +296,24 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
             },
             onNavigationRequest: (NavigationRequest request) {
               final url = request.url.toLowerCase();
-              if (url.contains('youtube-nocookie.com') ||
-                  url.contains('youtube.com/embed') ||
-                  url.contains('googlevideo.com') ||
-                  url.contains('gstatic.com') ||
-                  url.contains('ytimg.com') ||
-                  url.contains('doubleclick.net') ||
-                  url.contains('google.com')) {
-                return NavigationDecision.navigate;
+              // Prevent opening standard YouTube watch pages or external links
+              if (url.startsWith('https://www.youtube.com/watch') ||
+                  url.startsWith('https://m.youtube.com/watch') ||
+                  url.contains('/channel/') ||
+                  url.contains('/user/')) {
+                return NavigationDecision.prevent;
               }
-              return NavigationDecision.prevent;
+              return NavigationDecision.navigate;
             },
             onWebResourceError: (error) {
-              debugPrint('WebView resource error: ${error.description}');
-              if (error.isForMainFrame ?? true) {
-                if (mounted) {
+              debugPrint(
+                'WebView resource error [code: ${error.errorCode}, isMainFrame: ${error.isForMainFrame}]: ${error.description}',
+              );
+              // Only fail if main frame genuinely failed to connect
+              if (error.isForMainFrame == true &&
+                  error.description != 'net::ERR_CONNECTION_REFUSED' &&
+                  error.errorCode != -102) {
+                if (mounted && _isLoading) {
                   setState(() {
                     _isLoading = false;
                     _hasError = true;

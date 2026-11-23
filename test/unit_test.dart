@@ -372,25 +372,28 @@ void main() {
   });
 
   group('Match Pairs 10 Levels & Progression System', () {
-    test('10 Progressive levels are properly defined with easy to hard difficulty', () {
-      expect(MatchPairLevel.allLevels.length, 10);
+    test(
+      '10 Progressive levels are properly defined with easy to hard difficulty',
+      () {
+        expect(MatchPairLevel.allLevels.length, 10);
 
-      // Verify progression from 2 pairs (4 cards) up to 8 pairs (16 cards)
-      expect(MatchPairLevel.allLevels[0].pairCount, 2);
-      expect(MatchPairLevel.allLevels[0].totalCards, 4);
-      expect(MatchPairLevel.allLevels[0].difficulty, 'Easy');
+        // Verify progression from 2 pairs (4 cards) up to 8 pairs (16 cards)
+        expect(MatchPairLevel.allLevels[0].pairCount, 2);
+        expect(MatchPairLevel.allLevels[0].totalCards, 4);
+        expect(MatchPairLevel.allLevels[0].difficulty, 'Easy');
 
-      expect(MatchPairLevel.allLevels[9].pairCount, 8);
-      expect(MatchPairLevel.allLevels[9].totalCards, 16);
-      expect(MatchPairLevel.allLevels[9].difficulty, 'Master');
+        expect(MatchPairLevel.allLevels[9].pairCount, 8);
+        expect(MatchPairLevel.allLevels[9].totalCards, 16);
+        expect(MatchPairLevel.allLevels[9].difficulty, 'Master');
 
-      // Verify each level number is sequential 1..10
-      for (int i = 0; i < 10; i++) {
-        expect(MatchPairLevel.allLevels[i].levelNumber, i + 1);
-        expect(MatchPairLevel.allLevels[i].title.isNotEmpty, true);
-        expect(MatchPairLevel.allLevels[i].pairs.isNotEmpty, true);
-      }
-    });
+        // Verify each level number is sequential 1..10
+        for (int i = 0; i < 10; i++) {
+          expect(MatchPairLevel.allLevels[i].levelNumber, i + 1);
+          expect(MatchPairLevel.allLevels[i].title.isNotEmpty, true);
+          expect(MatchPairLevel.allLevels[i].pairs.isNotEmpty, true);
+        }
+      },
+    );
 
     test('All card assets across all 10 levels exist on disk', () {
       for (final level in MatchPairLevel.allLevels) {
@@ -399,28 +402,32 @@ void main() {
           expect(
             file.existsSync(),
             true,
-            reason: 'Expected asset ${file.path} for level ${level.levelNumber} (${pair['label']}) to exist',
+            reason:
+                'Expected asset ${file.path} for level ${level.levelNumber} (${pair['label']}) to exist',
           );
         }
       }
     });
 
-    test('MiniGameCubit initializes on levelMap and can start Level 1', () async {
-      final storage = LocalStorageService();
-      await storage.init();
+    test(
+      'MiniGameCubit initializes on levelMap and can start Level 1',
+      () async {
+        final storage = LocalStorageService();
+        await storage.init();
 
-      final cubit = MiniGameCubit(storage: storage);
-      expect(cubit.state.viewMode, MiniGameViewMode.levelMap);
-      expect(cubit.state.unlockedLevel, 1);
+        final cubit = MiniGameCubit(storage: storage);
+        expect(cubit.state.viewMode, MiniGameViewMode.levelMap);
+        expect(cubit.state.unlockedLevel, 1);
 
-      cubit.startLevel(1);
-      expect(cubit.state.viewMode, MiniGameViewMode.playing);
-      expect(cubit.state.currentLevel.levelNumber, 1);
-      expect(cubit.state.cards.length, 4); // 2 pairs = 4 cards
-      expect(cubit.state.secondsRemaining, 35);
+        cubit.startLevel(1);
+        expect(cubit.state.viewMode, MiniGameViewMode.playing);
+        expect(cubit.state.currentLevel.levelNumber, 1);
+        expect(cubit.state.cards.length, 4); // 2 pairs = 4 cards
+        expect(cubit.state.secondsRemaining, 35);
 
-      cubit.close();
-    });
+        cubit.close();
+      },
+    );
 
     test('MiniGameCubit completes level and unlocks next level', () async {
       final storage = LocalStorageService();
@@ -433,7 +440,9 @@ void main() {
       final cards = cubit.state.cards;
       // Find two cards with same label
       final firstLabel = cards[0].label;
-      final matchIndex = cards.indexWhere((c) => c.label == firstLabel && c.id != cards[0].id);
+      final matchIndex = cards.indexWhere(
+        (c) => c.label == firstLabel && c.id != cards[0].id,
+      );
 
       cubit.flipCard(0);
       cubit.flipCard(matchIndex);
