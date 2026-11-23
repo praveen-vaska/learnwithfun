@@ -29,6 +29,7 @@ class KidVideoPlayerScreen extends StatefulWidget {
 class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
   final GlobalKey<ConfettiCelebrationState> _confettiKey =
       GlobalKey<ConfettiCelebrationState>();
+  final GlobalKey _webViewKey = GlobalKey();
 
   WebViewController? _webViewController;
   late Story _currentStory;
@@ -347,6 +348,14 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       }
     });
+
+    if (_isPlaying) {
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted && _isPlaying) {
+          _webViewController?.runJavaScript('playerPlay();');
+        }
+      });
+    }
   }
 
   @override
@@ -435,21 +444,61 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
           _toggleFullscreen();
         }
       },
-      child: _isFullscreen
-          ? _buildFullscreenPlayer(videoId)
-          : _buildPortraitLayout(context, videoId),
+      child: Scaffold(
+        backgroundColor: _isFullscreen ? Colors.black : AppColors.background,
+        body: ConfettiCelebration(
+          key: _confettiKey,
+          child: _isFullscreen
+              ? _buildFullscreenLayout(context, videoId)
+              : _buildPortraitLayout(context, videoId),
+        ),
+      ),
     );
   }
 
-  Widget _buildFullscreenPlayer(String videoId) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Center(
-        child: AspectRatio(
-          aspectRatio: 16 / 9,
-          child: _buildVideoPlayerSurface(videoId),
+  Widget _buildFullscreenLayout(BuildContext context, String videoId) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // 1. Centered 16:9 full video stage (never unmounted!)
+        Center(
+          child: AspectRatio(
+            aspectRatio: 16 / 9,
+            child: _buildVideoPlayerSurface(videoId),
+          ),
         ),
-      ),
+
+        // 2. Kid-friendly Top-Left Exit Button to easily return to portrait
+        Positioned(
+          top: 16,
+          left: 16,
+          child: SafeArea(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(22),
+                onTap: _toggleFullscreen,
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.65),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.35),
+                      width: 1.2,
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.arrow_back_rounded,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -460,19 +509,15 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
         .where((s) => s.id != _currentStory.id && s.hasVideo)
         .toList();
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: ConfettiCelebration(
-        key: _confettiKey,
-        child: SafeArea(
-          child: Column(
-            children: [
-              // 1. Solid Kid-Friendly Top Navigation Bar
-              _buildTopBar(context),
+    return SafeArea(
+      child: Column(
+        children: [
+          // 1. Solid Kid-Friendly Top Navigation Bar
+          _buildTopBar(context),
 
-              // 2. High-Definition 16:9 Video Player Stage (Completely clean video!)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
+          // 2. High-Definition 16:9 Video Player Stage (Completely clean video!)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
                 child: Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
@@ -814,9 +859,7 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
               ),
             ],
           ),
-        ),
-      ),
-    );
+        );
   }
 
   Widget _buildVideoPlayerSurface(String videoId) {
@@ -828,7 +871,10 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: _togglePlayPause,
-            child: WebViewWidget(controller: _webViewController!),
+            child: WebViewWidget(
+              key: _webViewKey,
+              controller: _webViewController!,
+            ),
           )
         else
           _buildVideoThumbnailFallback(videoId),
