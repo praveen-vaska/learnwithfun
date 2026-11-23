@@ -48,6 +48,7 @@ app.*.map.json
 .widget_preview/
 
 # Android local properties and gradle
+.kotlin/
 android/local.properties
 .gradle/
 android/.gradle/

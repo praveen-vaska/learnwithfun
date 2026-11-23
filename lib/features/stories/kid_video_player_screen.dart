@@ -185,12 +185,36 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
-    #player { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #player-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+    #player {
+      position: absolute;
+      top: -12%;
+      left: -3%;
+      width: 106%;
+      height: 124%;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
-  <div id="player"></div>
+  <div id="player-container">
+    <div id="player"></div>
+  </div>
   <script>
     var tag = document.createElement('script');
     tag.src = "https://www.youtube.com/iframe_api";
