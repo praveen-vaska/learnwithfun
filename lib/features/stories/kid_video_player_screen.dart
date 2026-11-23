@@ -1,7 +1,10 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
@@ -31,8 +34,18 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
   WebViewController? _webViewController;
   late Story _currentStory;
   bool _isLoading = true;
+  bool _isBuffering = false;
   bool _hasError = false;
   bool _isPlaying = true;
+  bool _isFullscreen = false;
+
+  // On-video overlay controls state
+  bool _showControls = true;
+  Timer? _hideControlsTimer;
+  double _currentTime = 0.0;
+  double _duration = 0.0;
+  bool _isDraggingSlider = false;
+  double _dragValue = 0.0;
 
   bool get _isWebViewSupported {
     if (Platform.environment.containsKey('FLUTTER_TEST')) {
@@ -69,234 +82,11 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
                   _isLoading = false;
                   _hasError = false;
                 });
+                _startHideControlsTimer();
               }
-              // Clean YouTube branding, "More videos", cards, watermark, while keeping navigation controls
-              controller.runJavaScript('''
-                (function setupKidPlayer() {
-                  var css = `
-                    /* 1. Remove YouTube watermark logo and Watch on YouTube button */
-                    html body .html5-video-player .ytp-youtube-button,
-                    html body .ytp-chrome-bottom .ytp-right-controls .ytp-youtube-button,
-                    html body a.ytp-youtube-button,
-                    html body a[class*="ytp-youtube-button"],
-                    html body [class*="ytp-watermark"],
-                    html body .ytp-watermark,
-                    html body .ytp-impression-link,
-                    html body a.ytp-title-link,
-                    html body a[href*="youtube.com/watch"],
-                    html body [aria-label*="Watch on YouTube" i],
-                    html body [title*="Watch on YouTube" i],
-
-                    /* 2. Remove 'More videos' overlay and drawer */
-                    html body [class*="ytp-pause-overlay"],
-                    html body .ytp-pause-overlay,
-                    html body .ytp-pause-overlay-container,
-                    html body .ytp-expand-pause-overlay,
-                    html body .ytp-show-tiles,
-                    html body .ytp-scroll-min,
-                    html body [aria-label*="More videos" i],
-                    html body [title*="More videos" i],
-
-                    /* 3. Remove end-screen suggested videos, cards, popups and teasers */
-                    html body [class*="ytp-ce-"],
-                    html body .ytp-ce-element,
-                    html body .ytp-ce-video,
-                    html body .ytp-ce-channel,
-                    html body .ytp-ce-covering-overlay,
-                    html body .ytp-ce-element-show,
-                    html body [class*="ytp-cards-"],
-                    html body .ytp-cards-teaser,
-                    html body .ytp-cards-button,
-                    html body .ytp-upnext,
-                    html body [class*="ytp-endscreen-"],
-                    html body .ytp-endscreen-content,
-                    html body .ytp-autonav-endscreen-countdown-container,
-                    html body .ytp-suggested-action-badge,
-
-                    /* 4. Remove copy link / share buttons */
-                    html body .ytp-button--link,
-                    html body a.ytp-share-button,
-                    html body .ytp-copylink-button,
-                    html body [aria-label*="Copy link" i],
-                    html body [aria-label*="Share" i],
-
-                    /* 5. Remove large center play button and bezel */
-                    html body [class*="ytp-large-play-button"],
-                    html body .ytp-large-play-button,
-                    html body .ytp-large-play-button-bg {
-                      display: none !important;
-                      visibility: hidden !important;
-                      opacity: 0 !important;
-                      pointer-events: none !important;
-                      width: 0 !important;
-                      height: 0 !important;
-                      min-width: 0 !important;
-                      min-height: 0 !important;
-                      max-width: 0 !important;
-                      max-height: 0 !important;
-                      position: absolute !important;
-                      top: -9999px !important;
-                      left: -9999px !important;
-                      clip: rect(0,0,0,0) !important;
-                      transform: scale(0) !important;
-                      z-index: -9999 !important;
-                    }
-
-                    /* 6. KEEP navigation and playback controls visible and interactive */
-                    .ytp-chrome-bottom {
-                      display: block !important;
-                      visibility: visible !important;
-                      opacity: 1 !important;
-                    }
-                    .ytp-chrome-controls {
-                      display: flex !important;
-                      visibility: visible !important;
-                      opacity: 1 !important;
-                    }
-                    .ytp-play-button,
-                    .ytp-progress-bar-container,
-                    .ytp-time-display,
-                    .ytp-fullscreen-button {
-                      display: inline-block !important;
-                      visibility: visible !important;
-                      opacity: 1 !important;
-                      pointer-events: auto !important;
-                    }
-
-                    body, html, #player, .html5-video-player {
-                      background-color: #000 !important;
-                      overflow: hidden !important;
-                    }
-                  `;
-
-                  function injectStyle() {
-                    try {
-                      var style = document.getElementById('kid-clean-styles');
-                      if (!style) {
-                        style = document.createElement('style');
-                        style.id = 'kid-clean-styles';
-                        style.type = 'text/css';
-                        (document.head || document.documentElement).appendChild(style);
-                      }
-                      if (style.textContent !== css) {
-                        style.textContent = css;
-                      }
-                    } catch(e) {}
-                  }
-
-                  function purgeUnwanted() {
-                    injectStyle();
-
-                    var selectors = [
-                      '.ytp-youtube-button',
-                      'a.ytp-youtube-button',
-                      'a[class*="ytp-youtube-button"]',
-                      '.ytp-watermark',
-                      '[class*="ytp-watermark"]',
-                      '.ytp-impression-link',
-                      'a.ytp-title-link',
-                      '.ytp-button--link',
-                      'a.ytp-share-button',
-                      '.ytp-copylink-button',
-                      '[aria-label*="More videos" i]',
-                      '[title*="More videos" i]',
-                      '[aria-label*="Watch on YouTube" i]',
-                      '[title*="Watch on YouTube" i]',
-                      '[aria-label*="Copy link" i]',
-                      '[aria-label*="Share" i]',
-                      '.ytp-pause-overlay',
-                      '.ytp-pause-overlay-container',
-                      '.ytp-expand-pause-overlay',
-                      '[class*="ytp-pause-overlay"]',
-                      '.ytp-show-tiles',
-                      '.ytp-scroll-min',
-                      '.ytp-ce-element',
-                      '.ytp-ce-video',
-                      '.ytp-ce-channel',
-                      '.ytp-ce-covering-overlay',
-                      '.ytp-ce-element-show',
-                      '[class*="ytp-ce-"]',
-                      '[class*="ytp-cards-"]',
-                      '.ytp-cards-teaser',
-                      '.ytp-cards-button',
-                      '.ytp-upnext',
-                      '.ytp-endscreen-content',
-                      '[class*="ytp-endscreen-"]',
-                      '.ytp-large-play-button',
-                      '.ytp-large-play-button-bg',
-                      '[class*="ytp-large-play-button"]'
-                    ];
-
-                    for (var s = 0; s < selectors.length; s++) {
-                      try {
-                        var elements = document.querySelectorAll(selectors[s]);
-                        for (var i = 0; i < elements.length; i++) {
-                          var el = elements[i];
-                          try {
-                            el.remove();
-                          } catch(err) {
-                            el.style.setProperty('display', 'none', 'important');
-                            el.style.setProperty('visibility', 'hidden', 'important');
-                            el.style.setProperty('opacity', '0', 'important');
-                            el.style.setProperty('pointer-events', 'none', 'important');
-                          }
-                        }
-                      } catch(e) {}
-                    }
-                  }
-
-                  injectStyle();
-                  purgeUnwanted();
-
-                  try {
-                    var observer = new MutationObserver(function() {
-                      purgeUnwanted();
-                    });
-                    observer.observe(document.body || document.documentElement, {
-                      childList: true,
-                      subtree: true
-                    });
-                  } catch(e) {}
-
-                  setInterval(purgeUnwanted, 400);
-
-                  var vAttempts = 0;
-                  var vTimer = setInterval(function() {
-                    vAttempts++;
-                    var v = document.querySelector('video');
-                    if (v) {
-                      if (v.paused) {
-                        v.play().catch(function() {});
-                      }
-                      v.addEventListener('play', function() {
-                        purgeUnwanted();
-                        try { KidVideoBridge.postMessage('PLAYING'); } catch(e) {}
-                      });
-                      v.addEventListener('pause', function() {
-                        purgeUnwanted();
-                        try { KidVideoBridge.postMessage('PAUSED'); } catch(e) {}
-                      });
-                      v.addEventListener('ended', function() {
-                        purgeUnwanted();
-                        try { KidVideoBridge.postMessage('ENDED'); } catch(e) {}
-                      });
-                      v.addEventListener('timeupdate', function() {
-                        purgeUnwanted();
-                      });
-                      if (!v.paused) {
-                        clearInterval(vTimer);
-                      }
-                    }
-                    if (vAttempts > 25) {
-                      clearInterval(vTimer);
-                    }
-                  }, 250);
-                })();
-              ''');
             },
             onNavigationRequest: (NavigationRequest request) {
               final url = request.url.toLowerCase();
-              // Prevent opening standard YouTube watch pages or external links
               if (url.startsWith('https://www.youtube.com/watch') ||
                   url.startsWith('https://m.youtube.com/watch') ||
                   url.contains('/channel/') ||
@@ -309,10 +99,11 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
               debugPrint(
                 'WebView resource error [code: ${error.errorCode}, isMainFrame: ${error.isForMainFrame}]: ${error.description}',
               );
-              // Only fail if main frame genuinely failed to connect
+              // Only fail on critical main frame failures
               if (error.isForMainFrame == true &&
                   error.description != 'net::ERR_CONNECTION_REFUSED' &&
-                  error.errorCode != -102) {
+                  error.errorCode != -102 &&
+                  error.errorCode != -6) {
                 if (mounted && _isLoading) {
                   setState(() {
                     _isLoading = false;
@@ -326,14 +117,7 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
         ..addJavaScriptChannel(
           'KidVideoBridge',
           onMessageReceived: (JavaScriptMessage message) {
-            if (message.message == 'PLAYING') {
-              if (mounted && !_isPlaying) setState(() => _isPlaying = true);
-            } else if (message.message == 'PAUSED') {
-              if (mounted && _isPlaying) setState(() => _isPlaying = false);
-            } else if (message.message == 'ENDED') {
-              _confettiKey.currentState?.play();
-              _playNextVideo(auto: true);
-            }
+            _handleJsBridgeMessage(message.message);
           },
         );
 
@@ -341,63 +125,6 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
         final androidController =
             controller.platform as AndroidWebViewController;
         androidController.setMediaPlaybackRequiresUserGesture(false);
-        androidController.setCustomWidgetCallbacks(
-          onShowCustomWidget:
-              (Widget customWidget, void Function() onCustomWidgetHidden) {
-                if (!mounted) return;
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    fullscreenDialog: true,
-                    builder: (BuildContext context) => PopScope(
-                      onPopInvokedWithResult: (didPop, result) {
-                        if (didPop) {
-                          onCustomWidgetHidden();
-                        }
-                      },
-                      child: Scaffold(
-                        backgroundColor: Colors.black,
-                        body: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            Center(child: customWidget),
-                            Positioned(
-                              top: 16,
-                              left: 16,
-                              child: SafeArea(
-                                child: Container(
-                                  decoration: const BoxDecoration(
-                                    color: Colors.black54,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: IconButton(
-                                    icon: const Icon(
-                                      Icons.close_rounded,
-                                      color: Colors.white,
-                                      size: 26,
-                                    ),
-                                    onPressed: () {
-                                      if (Navigator.of(context).canPop()) {
-                                        Navigator.of(context).pop();
-                                      }
-                                      onCustomWidgetHidden();
-                                    },
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-          onHideCustomWidget: () {
-            if (mounted && Navigator.of(context).canPop()) {
-              Navigator.of(context).pop();
-            }
-          },
-        );
       }
 
       _webViewController = controller;
@@ -408,54 +135,312 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
     }
   }
 
+  void _handleJsBridgeMessage(String rawJson) {
+    try {
+      final data = jsonDecode(rawJson) as Map<String, dynamic>;
+      final type = data['type'] as String?;
+      final payload = data['data'] as Map<String, dynamic>? ?? {};
+
+      if (type == 'READY') {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _hasError = false;
+            final dur = (payload['duration'] as num?)?.toDouble() ?? 0.0;
+            if (dur > 0) _duration = dur;
+          });
+          _startHideControlsTimer();
+        }
+      } else if (type == 'STATE_CHANGE') {
+        final state = payload['state'] as String?;
+        final cur = (payload['currentTime'] as num?)?.toDouble() ?? 0.0;
+        final dur = (payload['duration'] as num?)?.toDouble() ?? 0.0;
+
+        if (mounted) {
+          setState(() {
+            if (dur > 0) _duration = dur;
+            if (!_isDraggingSlider) _currentTime = cur;
+
+            if (state == 'PLAYING') {
+              _isPlaying = true;
+              _isLoading = false;
+              _isBuffering = false;
+              _startHideControlsTimer();
+            } else if (state == 'PAUSED') {
+              _isPlaying = false;
+              _isBuffering = false;
+              _showControls = true;
+              _hideControlsTimer?.cancel();
+            } else if (state == 'BUFFERING') {
+              _isBuffering = true;
+            } else if (state == 'ENDED') {
+              _isPlaying = false;
+              _isBuffering = false;
+              _showControls = true;
+              _confettiKey.currentState?.play();
+              _playNextVideo(auto: true);
+            }
+          });
+        }
+      } else if (type == 'TIME_UPDATE') {
+        final cur = (payload['currentTime'] as num?)?.toDouble() ?? 0.0;
+        final dur = (payload['duration'] as num?)?.toDouble() ?? 0.0;
+        if (mounted && !_isDraggingSlider) {
+          setState(() {
+            _currentTime = cur;
+            if (dur > 0) _duration = dur;
+          });
+        }
+      } else if (type == 'ERROR') {
+        final code = payload['code'];
+        debugPrint('YouTube player error event: $code');
+        // Only set error if critical (100, 101, 150)
+        if (code == 100 || code == 101 || code == 150) {
+          if (mounted) {
+            setState(() {
+              _hasError = true;
+              _isLoading = false;
+            });
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error parsing KidVideoBridge message: $e');
+    }
+  }
+
+  String _buildPlayerHtml(String videoId) {
+    return '''
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
+    #player { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+  </style>
+</head>
+<body>
+  <div id="player"></div>
+  <script>
+    var tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    var firstScriptTag = document.getElementsByTagName('script')[0];
+    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+    var player = null;
+    var timeInterval = null;
+
+    function onYouTubeIframeAPIReady() {
+      player = new YT.Player('player', {
+        height: '100%',
+        width: '100%',
+        videoId: '$videoId',
+        host: 'https://www.youtube-nocookie.com',
+        playerVars: {
+          'autoplay': 1,
+          'playsinline': 1,
+          'controls': 0,
+          'rel': 0,
+          'modestbranding': 1,
+          'iv_load_policy': 3,
+          'disablekb': 1,
+          'fs': 0,
+          'origin': 'https://www.youtube-nocookie.com',
+          'widget_referrer': 'https://www.youtube-nocookie.com'
+        },
+        events: {
+          'onReady': onPlayerReady,
+          'onStateChange': onPlayerStateChange,
+          'onError': onPlayerError
+        }
+      });
+    }
+
+    function notifyFlutter(type, data) {
+      try {
+        if (window.KidVideoBridge) {
+          window.KidVideoBridge.postMessage(JSON.stringify({ type: type, data: data }));
+        }
+      } catch (e) {}
+    }
+
+    function onPlayerReady(event) {
+      try {
+        event.target.playVideo();
+      } catch (e) {}
+      var dur = 0;
+      try { dur = player.getDuration(); } catch (e) {}
+      notifyFlutter('READY', { duration: dur });
+    }
+
+    function onPlayerStateChange(event) {
+      var stateMap = { '-1': 'UNSTARTED', '0': 'ENDED', '1': 'PLAYING', '2': 'PAUSED', '3': 'BUFFERING', '5': 'CUED' };
+      var stateName = stateMap[event.data] || 'UNKNOWN';
+      var cur = 0;
+      var dur = 0;
+      try { cur = player.getCurrentTime(); } catch (e) {}
+      try { dur = player.getDuration(); } catch (e) {}
+      notifyFlutter('STATE_CHANGE', { state: stateName, currentTime: cur, duration: dur });
+
+      if (event.data === 1) {
+        startTimeUpdater();
+      } else {
+        stopTimeUpdater();
+      }
+    }
+
+    function startTimeUpdater() {
+      stopTimeUpdater();
+      timeInterval = setInterval(function() {
+        if (player && typeof player.getCurrentTime === 'function') {
+          var cur = player.getCurrentTime() || 0;
+          var dur = player.getDuration() || 0;
+          notifyFlutter('TIME_UPDATE', { currentTime: cur, duration: dur });
+        }
+      }, 500);
+    }
+
+    function stopTimeUpdater() {
+      if (timeInterval) {
+        clearInterval(timeInterval);
+        timeInterval = null;
+      }
+    }
+
+    function onPlayerError(event) {
+      notifyFlutter('ERROR', { code: event.data });
+    }
+
+    function playerPlay() {
+      if (player && player.playVideo) player.playVideo();
+    }
+
+    function playerPause() {
+      if (player && player.pauseVideo) player.pauseVideo();
+    }
+
+    function playerSeekTo(sec) {
+      if (player && player.seekTo) player.seekTo(sec, true);
+    }
+
+    function playerSeekRelative(delta) {
+      if (player && player.getCurrentTime && player.seekTo) {
+        var nextTime = Math.max(0, (player.getCurrentTime() || 0) + delta);
+        player.seekTo(nextTime, true);
+      }
+    }
+
+    function playerReplay() {
+      if (player && player.seekTo && player.playVideo) {
+        player.seekTo(0, true);
+        player.playVideo();
+      }
+    }
+  </script>
+</body>
+</html>
+''';
+  }
+
   void _loadVideo(String videoId) {
     if (_webViewController == null) return;
     setState(() {
       _isLoading = true;
       _hasError = false;
       _isPlaying = true;
+      _isBuffering = false;
+      _currentTime = 0.0;
+      _duration = 0.0;
+      _showControls = true;
     });
 
-    final embedUri = Uri.parse(
-      'https://www.youtube.com/embed/$videoId?autoplay=1&playsinline=1&controls=1&rel=0&iv_load_policy=3&modestbranding=1&enablejsapi=1&fs=1',
-    );
-
-    _webViewController!.loadRequest(
-      embedUri,
-      headers: const {'Referer': 'https://www.youtube.com'},
+    _webViewController!.loadHtmlString(
+      _buildPlayerHtml(videoId),
+      baseUrl: 'https://www.youtube-nocookie.com',
     );
   }
 
-  void _seekRelative(int seconds) {
-    if (_webViewController != null) {
-      _webViewController!.runJavaScript('''
-        (function() {
-          var v = document.querySelector('video');
-          if (v) {
-            v.currentTime = Math.max(0, Math.min(v.duration || 999999, v.currentTime + ($seconds)));
-          }
-        })();
-      ''');
+  void _startHideControlsTimer() {
+    _hideControlsTimer?.cancel();
+    if (_isPlaying) {
+      _hideControlsTimer = Timer(const Duration(seconds: 4), () {
+        if (mounted && _isPlaying) {
+          setState(() => _showControls = false);
+        }
+      });
     }
+  }
+
+  void _toggleControlsVisibility() {
+    setState(() {
+      _showControls = !_showControls;
+      if (_showControls) {
+        _startHideControlsTimer();
+      }
+    });
+  }
+
+  void _seekRelative(int seconds) {
+    _webViewController?.runJavaScript('playerSeekRelative($seconds);');
+    _startHideControlsTimer();
+  }
+
+  void _seekTo(double seconds) {
+    _webViewController?.runJavaScript('playerSeekTo($seconds);');
   }
 
   void _togglePlayPause() {
     if (_webViewController == null) return;
     if (_isPlaying) {
-      _webViewController!.runJavaScript(
-        'var v = document.querySelector("video"); if(v) v.pause();',
-      );
-      setState(() => _isPlaying = false);
+      _webViewController!.runJavaScript('playerPause();');
+      setState(() {
+        _isPlaying = false;
+        _showControls = true;
+      });
+      _hideControlsTimer?.cancel();
     } else {
-      _webViewController!.runJavaScript(
-        'var v = document.querySelector("video"); if(v) v.play();',
-      );
+      _webViewController!.runJavaScript('playerPlay();');
       setState(() => _isPlaying = true);
+      _startHideControlsTimer();
     }
+  }
+
+  void _toggleFullscreen() {
+    setState(() {
+      _isFullscreen = !_isFullscreen;
+      if (_isFullscreen) {
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      } else {
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+        ]);
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      }
+    });
+  }
+
+  String _formatDuration(double seconds) {
+    if (seconds.isNaN || seconds.isInfinite || seconds <= 0) return '0:00';
+    final totalSecs = seconds.toInt();
+    final m = totalSecs ~/ 60;
+    final s = totalSecs % 60;
+    return '$m:${s.toString().padLeft(2, '0')}';
   }
 
   @override
   void dispose() {
+    _hideControlsTimer?.cancel();
+    if (_isFullscreen) {
+      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
     AppAudioService.instance.stop();
     super.dispose();
   }
@@ -520,24 +505,42 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
   }
 
   void _replayVideo() {
-    if (_webViewController != null) {
-      _webViewController!.runJavaScript('''
-        (function() {
-          var v = document.querySelector('video');
-          if (v) {
-            v.currentTime = 0;
-            v.play();
-          }
-        })();
-      ''');
-    }
+    _webViewController?.runJavaScript('playerReplay();');
     setState(() => _isPlaying = true);
+    _startHideControlsTimer();
     _confettiKey.currentState?.play();
   }
 
   @override
   Widget build(BuildContext context) {
     final videoId = _currentStory.youtubeVideoId ?? 'yCjJyiqpAuU';
+
+    return PopScope(
+      canPop: !_isFullscreen,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _isFullscreen) {
+          _toggleFullscreen();
+        }
+      },
+      child: _isFullscreen
+          ? _buildFullscreenPlayer(videoId)
+          : _buildPortraitLayout(context, videoId),
+    );
+  }
+
+  Widget _buildFullscreenPlayer(String videoId) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Center(
+        child: AspectRatio(
+          aspectRatio: 16 / 9,
+          child: _buildVideoPlayerSurface(videoId),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPortraitLayout(BuildContext context, String videoId) {
     final channelName = _currentStory.youtubeChannel ?? 'LearnWithFun';
     final storiesState = context.watch<StoriesCubit>().state;
     final otherVideos = storiesState.stories
@@ -551,10 +554,10 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
         child: SafeArea(
           child: Column(
             children: [
-              // 1. Solid Kid-Friendly Top Navigation Bar (NO transparent overlap)
+              // 1. Solid Kid-Friendly Top Navigation Bar
               _buildTopBar(context),
 
-              // 2. High-Definition 16:9 Video Player Stage (Pinned at the top!)
+              // 2. High-Definition 16:9 Video Player Stage with In-Video Controls
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
                 child: Container(
@@ -573,18 +576,7 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
                   clipBehavior: Clip.antiAlias,
                   child: AspectRatio(
                     aspectRatio: 16 / 9,
-                    child: (_isWebViewSupported && _webViewController != null)
-                        ? Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              WebViewWidget(controller: _webViewController!),
-                              if (_hasError)
-                                _buildErrorFallback(videoId)
-                              else if (_isLoading)
-                                _buildVideoThumbnailFallback(videoId),
-                            ],
-                          )
-                        : _buildVideoThumbnailFallback(videoId),
+                    child: _buildVideoPlayerSurface(videoId),
                   ),
                 ),
               ),
@@ -605,7 +597,6 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
                           children: [
                             Row(
                               children: [
-                                // Soft Purple Child Music / Story Icon
                                 Container(
                                   padding: const EdgeInsets.all(10),
                                   decoration: const BoxDecoration(
@@ -915,6 +906,261 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
     );
   }
 
+  Widget _buildVideoPlayerSurface(String videoId) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // 1. YouTube WebView (Underneath, pointer events ignored so child cannot click external links)
+        if (_isWebViewSupported && _webViewController != null)
+          IgnorePointer(
+            ignoring: true,
+            child: WebViewWidget(controller: _webViewController!),
+          )
+        else
+          _buildVideoThumbnailFallback(videoId),
+
+        // 2. Loading / Buffering / Error Overlays
+        if (_hasError)
+          _buildErrorFallback(videoId)
+        else if (_isLoading)
+          _buildVideoThumbnailFallback(videoId)
+        else if (_isBuffering)
+          const Center(
+            child: CircularProgressIndicator(
+              color: AppColors.primaryPurple,
+              strokeWidth: 3.5,
+            ),
+          ),
+
+        // 3. Interactive Kid-Friendly Video Controls Overlay (Play, Forward, Seek, Fullscreen)
+        if (!_hasError && !_isLoading) _buildVideoControlsOverlay(),
+      ],
+    );
+  }
+
+  Widget _buildVideoControlsOverlay() {
+    final current = _isDraggingSlider ? _dragValue : _currentTime;
+    final displayTime = _formatDuration(current);
+    final displayDuration = _formatDuration(_duration);
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _toggleControlsVisibility,
+      child: AnimatedOpacity(
+        opacity: (_showControls || !_isPlaying) ? 1.0 : 0.0,
+        duration: const Duration(milliseconds: 250),
+        child: IgnorePointer(
+          ignoring: !_showControls && _isPlaying,
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withOpacity(0.45),
+                  Colors.transparent,
+                  Colors.black.withOpacity(0.65),
+                ],
+                stops: const [0.0, 0.5, 1.0],
+              ),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Top row: Title
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _currentStory.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            shadows: [
+                              Shadow(color: Colors.black, blurRadius: 4),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Center Action Row: -10s, Play/Pause, +10s
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // -10s button
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(24),
+                        onTap: () => _seekRelative(-10),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.55),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.replay_10_rounded,
+                            color: Colors.white,
+                            size: 26,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 28),
+
+                    // Big Center Play / Pause button
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(36),
+                        onTap: _togglePlayPause,
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryPurple,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.primaryPurple.withOpacity(0.5),
+                                blurRadius: 16,
+                                spreadRadius: 3,
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            _isPlaying
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                            color: Colors.white,
+                            size: 34,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 28),
+
+                    // +10s button
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(24),
+                        onTap: () => _seekRelative(10),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.55),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.forward_10_rounded,
+                            color: Colors.white,
+                            size: 26,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Bottom Bar: Time elapsed, Seek slider, Duration, Fullscreen
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 8, 6),
+                  child: Row(
+                    children: [
+                      Text(
+                        displayTime,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+                        ),
+                      ),
+                      Expanded(
+                        child: SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            trackHeight: 3.5,
+                            thumbShape: const RoundSliderThumbShape(
+                              enabledThumbRadius: 6.0,
+                            ),
+                            overlayShape: const RoundSliderOverlayShape(
+                              overlayRadius: 12.0,
+                            ),
+                            activeTrackColor: AppColors.primaryPurple,
+                            inactiveTrackColor: Colors.white30,
+                            thumbColor: Colors.white,
+                            overlayColor: AppColors.primaryPurple.withOpacity(
+                              0.3,
+                            ),
+                          ),
+                          child: Slider(
+                            value: current.clamp(
+                              0.0,
+                              _duration > 0 ? _duration : 1.0,
+                            ),
+                            max: _duration > 0 ? _duration : 1.0,
+                            onChanged: (val) {
+                              setState(() {
+                                _isDraggingSlider = true;
+                                _dragValue = val;
+                              });
+                            },
+                            onChangeEnd: (val) {
+                              _seekTo(val);
+                              setState(() {
+                                _isDraggingSlider = false;
+                                _currentTime = val;
+                              });
+                              _startHideControlsTimer();
+                            },
+                          ),
+                        ),
+                      ),
+                      Text(
+                        displayDuration,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      IconButton(
+                        icon: Icon(
+                          _isFullscreen
+                              ? Icons.fullscreen_exit_rounded
+                              : Icons.fullscreen_rounded,
+                          color: Colors.white,
+                          size: 22,
+                        ),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        onPressed: _toggleFullscreen,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildTopBar(BuildContext context) {
     return Container(
       color: AppColors.background,
@@ -1032,7 +1278,6 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Real Video Thumbnail
         Image.network(
           thumbnailUrl,
           fit: BoxFit.cover,
@@ -1043,7 +1288,6 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
             );
           },
         ),
-        // Dark translucent overlay with friendly loading spinner
         Container(
           color: Colors.black45,
           child: const Center(
