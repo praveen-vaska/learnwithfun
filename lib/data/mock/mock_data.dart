@@ -2086,8 +2086,8 @@ class MockData {
       hasVideo: true,
       videoTheme: 'lion_mouse',
       language: 'English',
-      youtubeVideoId: 'GxcGVCEEdcU',
-      youtubeChannel: 'English Fairy Tales',
+      youtubeVideoId: 'DkvPrOmElH8',
+      youtubeChannel: 'Geethanjali Kids',
       pages: [
         'Once upon a time in a sunny green savanna, a mighty lion was taking a peaceful nap beneath the shade of a tall acacia tree.',
         'A tiny, curious mouse scurried across the forest floor and accidentally tickled the lion’s whiskers. With a loud grunt, the giant lion placed his heavy paw right over the little mouse!',
@@ -2292,8 +2292,8 @@ class MockData {
       hasVideo: true,
       videoTheme: 'thirsty_crow',
       language: 'Telugu',
-      youtubeVideoId: 'T9IMLlJM_04',
-      youtubeChannel: 'Bommarillu Telugu Stories',
+      youtubeVideoId: '_Yp65GIA9vE',
+      youtubeChannel: 'Kiddos Tales Telugu',
       pages: [
         'ఒకానొక వేసవి కాలంలో ఒక కాకికి విపరీతమైన దాహం వేసింది. నీటి కోసం ఎక్కడెక్కడో వెతికింది.',
         'చివరకు ఒక ఇంటి పెరట్లో ఒక నీటి కుండను చూసింది. ఎంతో ఆశతో కుండ పైకి వాలింది.',
@@ -2429,8 +2429,8 @@ class MockData {
       hasVideo: true,
       videoTheme: 'lion_mouse',
       language: 'Hindi',
-      youtubeVideoId: '68JOgtt15Zs',
-      youtubeChannel: 'Hindi Fairy Tales',
+      youtubeVideoId: 'X-fQBqJ2qys',
+      youtubeChannel: 'Infobells Hindi',
       pages: [
         'जंगल के राजा शेर जब सो रहे थे, तब एक नन्हा चूहा उनकी पीठ पर कूदने लगा। शेर ने जागकर उसे अपने पंजे में पकड़ लिया।',
         'चूहे ने विनती की, “महाराज, मुझे छोड़ दीजिए, कभी मैं भी आपके काम आऊंगा।” शेर ने हंसते हुए उसे छोड़ दिया।',
