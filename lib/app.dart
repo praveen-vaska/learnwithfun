@@ -25,25 +25,31 @@ class LearnWithFunApp extends StatelessWidget {
     final userRepository = MockUserRepository(storage);
     final learningRepository = MockLearningRepository(storage);
 
-    return MultiBlocProvider(
+    return MultiRepositoryProvider(
       providers: [
-        BlocProvider<UserCubit>(create: (_) => UserCubit(userRepository)),
-        BlocProvider<LearningCubit>(
-          create: (_) => LearningCubit(learningRepository),
-        ),
-        BlocProvider<QuizCubit>(create: (_) => QuizCubit(learningRepository)),
-        BlocProvider<DailyChallengeCubit>(
-          create: (_) => DailyChallengeCubit(learningRepository),
-        ),
-        BlocProvider<StoriesCubit>(
-          create: (_) => StoriesCubit(learningRepository),
-        ),
+        RepositoryProvider<UserRepository>.value(value: userRepository),
+        RepositoryProvider<LearningRepository>.value(value: learningRepository),
       ],
-      child: MaterialApp(
-        title: 'LearnWithFun',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.lightTheme,
-        home: debugCatalogScreen() ?? const SplashScreen(),
+      child: MultiBlocProvider(
+        providers: [
+          BlocProvider<UserCubit>(create: (_) => UserCubit(userRepository)),
+          BlocProvider<LearningCubit>(
+            create: (_) => LearningCubit(learningRepository),
+          ),
+          BlocProvider<QuizCubit>(create: (_) => QuizCubit(learningRepository)),
+          BlocProvider<DailyChallengeCubit>(
+            create: (_) => DailyChallengeCubit(learningRepository),
+          ),
+          BlocProvider<StoriesCubit>(
+            create: (_) => StoriesCubit(learningRepository),
+          ),
+        ],
+        child: MaterialApp(
+          title: 'LearnWithFun',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.lightTheme,
+          home: debugCatalogScreen() ?? const SplashScreen(),
+        ),
       ),
     );
   }

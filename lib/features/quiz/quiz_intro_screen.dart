@@ -8,8 +8,8 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/app_card.dart';
+import '../../data/mock/mock_data.dart';
 import '../../data/models/quiz_level.dart';
-import '../../data/repositories/learning_repository.dart';
 import '../../blocs/quiz_cubit.dart';
 import 'quiz_question_screen.dart';
 
@@ -52,8 +52,7 @@ class _QuizIntroScreenState extends State<QuizIntroScreen> {
   @override
   Widget build(BuildContext context) {
     final quizState = context.watch<QuizCubit>().state;
-    final repo = context.read<LearningRepository>();
-    final allLevels = repo.getQuizLevels();
+    final allLevels = MockData.quizLevels;
     final unlockedLevel = quizState.unlockedLevel;
     final starsMap = quizState.levelStars;
 
