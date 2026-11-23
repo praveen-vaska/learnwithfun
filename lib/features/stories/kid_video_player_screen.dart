@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -38,6 +39,12 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
   bool _hasError = false;
   bool _isPlaying = true;
   bool _isFullscreen = false;
+  Timer? _controlsTimer;
+  bool _showFullscreenControls = true;
+  double _currentTime = 0.0;
+  double _totalDuration = 0.0;
+  bool _isDraggingSlider = false;
+  double _dragValue = 0.0;
 
   bool get _isWebViewSupported {
     if (Platform.environment.containsKey('FLUTTER_TEST')) {
@@ -160,6 +167,15 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
             }
           });
         }
+      } else if (type == 'TIME_UPDATE') {
+        final current = (payload['current'] as num?)?.toDouble() ?? 0.0;
+        final duration = (payload['duration'] as num?)?.toDouble() ?? 0.0;
+        if (mounted && !_isDraggingSlider) {
+          setState(() {
+            _currentTime = current;
+            if (duration > 0) _totalDuration = duration;
+          });
+        }
       } else if (type == 'ERROR') {
         final code = payload['code'];
         debugPrint('YouTube player error event: $code');
@@ -204,10 +220,10 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
     }
     #player {
       position: absolute;
-      top: -12%;
-      left: -3%;
-      width: 106%;
-      height: 124%;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
       pointer-events: none;
     }
   </style>
@@ -229,7 +245,7 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
         height: '100%',
         width: '100%',
         videoId: '$videoId',
-        host: 'https://www.youtube-nocookie.com',
+        host: 'https://www.youtube.com',
         playerVars: {
           'autoplay': 1,
           'playsinline': 1,
@@ -239,8 +255,8 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
           'iv_load_policy': 3,
           'disablekb': 1,
           'fs': 0,
-          'origin': 'https://www.youtube-nocookie.com',
-          'widget_referrer': 'https://www.youtube-nocookie.com'
+          'origin': 'https://com.learnwithfun.learnwithfun',
+          'widget_referrer': 'https://com.learnwithfun.learnwithfun'
         },
         events: {
           'onReady': onPlayerReady,
@@ -261,9 +277,21 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
     function onPlayerReady(event) {
       try {
         event.target.playVideo();
+        var dur = event.target.getDuration() || 0;
+        if (dur > 0) notifyFlutter('TIME_UPDATE', { current: 0, duration: dur });
       } catch (e) {}
       notifyFlutter('READY', {});
     }
+
+    var timeInterval = setInterval(function() {
+      try {
+        if (player && player.getCurrentTime && player.getDuration) {
+          var cur = player.getCurrentTime() || 0;
+          var dur = player.getDuration() || 0;
+          notifyFlutter('TIME_UPDATE', { current: cur, duration: dur });
+        }
+      } catch (e) {}
+    }, 500);
 
     function onPlayerStateChange(event) {
       var stateMap = { '-1': 'UNSTARTED', '0': 'ENDED', '1': 'PLAYING', '2': 'PAUSED', '3': 'BUFFERING', '5': 'CUED' };
@@ -281,6 +309,12 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
 
     function playerPause() {
       if (player && player.pauseVideo) player.pauseVideo();
+    }
+
+    function playerSeekTo(seconds) {
+      if (player && player.seekTo) {
+        player.seekTo(seconds, true);
+      }
     }
 
     function playerSeekRelative(delta) {
@@ -309,12 +343,49 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
       _hasError = false;
       _isPlaying = true;
       _isBuffering = false;
+      _currentTime = 0.0;
+      _totalDuration = 0.0;
+      _isDraggingSlider = false;
     });
 
     _webViewController!.loadHtmlString(
       _buildPlayerHtml(videoId),
-      baseUrl: 'https://www.youtube-nocookie.com',
+      baseUrl: 'https://com.learnwithfun.learnwithfun',
     );
+  }
+
+  String _formatTime(double seconds) {
+    if (seconds.isNaN || seconds.isInfinite || seconds < 0) return '00:00';
+    final int totalSec = seconds.toInt();
+    final int min = totalSec ~/ 60;
+    final int sec = totalSec % 60;
+    return '${min.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
+  }
+
+  void _startHideControlsTimer() {
+    _controlsTimer?.cancel();
+    _controlsTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted && _showFullscreenControls && !_isDraggingSlider) {
+        setState(() {
+          _showFullscreenControls = false;
+        });
+      }
+    });
+  }
+
+  void _toggleControlsVisibility() {
+    setState(() {
+      _showFullscreenControls = !_showFullscreenControls;
+    });
+    if (_showFullscreenControls) {
+      _startHideControlsTimer();
+    } else {
+      _controlsTimer?.cancel();
+    }
+  }
+
+  void _seekTo(double seconds) {
+    _webViewController?.runJavaScript('playerSeekTo($seconds);');
   }
 
   void _seekRelative(int seconds) {
@@ -335,13 +406,16 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
   void _toggleFullscreen() {
     setState(() {
       _isFullscreen = !_isFullscreen;
+      _showFullscreenControls = true;
       if (_isFullscreen) {
         SystemChrome.setPreferredOrientations([
           DeviceOrientation.landscapeLeft,
           DeviceOrientation.landscapeRight,
         ]);
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+        _startHideControlsTimer();
       } else {
+        _controlsTimer?.cancel();
         SystemChrome.setPreferredOrientations([
           DeviceOrientation.portraitUp,
         ]);
@@ -360,6 +434,7 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
 
   @override
   void dispose() {
+    _controlsTimer?.cancel();
     if (_isFullscreen) {
       SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -464,41 +539,312 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
         Center(
           child: AspectRatio(
             aspectRatio: 16 / 9,
-            child: _buildVideoPlayerSurface(videoId),
+            child: _buildVideoPlayerSurface(videoId, showCornerToggle: false),
           ),
         ),
 
-        // 2. Kid-friendly Top-Left Exit Button to easily return to portrait
-        Positioned(
-          top: 16,
-          left: 16,
-          child: SafeArea(
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(22),
-                onTap: _toggleFullscreen,
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.65),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.35),
-                      width: 1.2,
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons.arrow_back_rounded,
-                    color: Colors.white,
-                    size: 24,
-                  ),
-                ),
-              ),
+        // 2. Fullscreen Tap Detector Layer (always intercepts taps above native PlatformView)
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _toggleControlsVisibility,
+            child: const SizedBox.expand(),
+          ),
+        ),
+
+        // 3. Fullscreen Animated Navigation & Scrubber Overlay (Tap screen to show/hide)
+        AnimatedOpacity(
+          opacity: _showFullscreenControls ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 250),
+          child: IgnorePointer(
+            ignoring: !_showFullscreenControls,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _toggleControlsVisibility,
+              child: _buildFullscreenControlsOverlay(),
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildFullscreenControlsOverlay() {
+    final effectiveTime = _isDraggingSlider ? _dragValue : _currentTime;
+    final maxDuration = _totalDuration > 0 ? _totalDuration : 1.0;
+    final currentSliderVal = effectiveTime.clamp(0.0, maxDuration);
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.black.withOpacity(0.75),
+            Colors.black.withOpacity(0.15),
+            Colors.black.withOpacity(0.15),
+            Colors.black.withOpacity(0.85),
+          ],
+          stops: const [0.0, 0.25, 0.70, 1.0],
+        ),
+      ),
+      child: SafeArea(
+        child: Column(
+          children: [
+            // Top Bar: Back to Portrait, Title, and Replay
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(22),
+                      onTap: _toggleFullscreen,
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.arrow_back_rounded,
+                          color: Colors.white,
+                          size: 22,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      _currentStory.title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        shadows: [
+                          Shadow(blurRadius: 6, color: Colors.black87),
+                        ],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () {
+                        _replayVideo();
+                        _startHideControlsTimer();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.replay_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Center Area: -10s, Big Play/Pause, +10s
+            Expanded(
+              child: Center(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // -10s Rewind Button
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(30),
+                        onTap: () {
+                          _seekRelative(-10);
+                          _startHideControlsTimer();
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.22),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.replay_10_rounded,
+                            color: Colors.white,
+                            size: 34,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 32),
+
+                    // Big Play/Pause Button
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(40),
+                        onTap: () {
+                          _togglePlayPause();
+                          _startHideControlsTimer();
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryPurple,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.5),
+                                blurRadius: 16,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            _isPlaying
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                            color: Colors.white,
+                            size: 46,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 32),
+
+                    // +10s Fast Forward Button
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(30),
+                        onTap: () {
+                          _seekRelative(10);
+                          _startHideControlsTimer();
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.22),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.forward_10_rounded,
+                            color: Colors.white,
+                            size: 34,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Bottom Area: Scrubber Bar, Time Labels, and Fullscreen Exit Toggle
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              child: Row(
+                children: [
+                  // Current Time
+                  Text(
+                    _formatTime(effectiveTime),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+
+                  // Draggable Video Bar Slider
+                  Expanded(
+                    child: SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 5,
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 8,
+                        ),
+                        overlayShape: const RoundSliderOverlayShape(
+                          overlayRadius: 18,
+                        ),
+                        activeTrackColor: AppColors.primaryPurple,
+                        inactiveTrackColor: Colors.white.withOpacity(0.3),
+                        thumbColor: Colors.white,
+                        overlayColor: AppColors.primaryPurple.withOpacity(0.3),
+                      ),
+                      child: Slider(
+                        min: 0.0,
+                        max: maxDuration,
+                        value: currentSliderVal,
+                        onChanged: (val) {
+                          setState(() {
+                            _isDraggingSlider = true;
+                            _dragValue = val;
+                          });
+                          _startHideControlsTimer();
+                        },
+                        onChangeEnd: (val) {
+                          _seekTo(val);
+                          setState(() {
+                            _isDraggingSlider = false;
+                            _currentTime = val;
+                          });
+                          _startHideControlsTimer();
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+
+                  // Total Duration
+                  Text(
+                    _formatTime(_totalDuration),
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.85),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+
+                  // Exit Fullscreen Button
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: _toggleFullscreen,
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.fullscreen_exit_rounded,
+                          color: Colors.white,
+                          size: 22,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -862,22 +1208,30 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
         );
   }
 
-  Widget _buildVideoPlayerSurface(String videoId) {
+  Widget _buildVideoPlayerSurface(
+    String videoId, {
+    bool showCornerToggle = true,
+  }) {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // 1. YouTube WebView (Tapping anywhere cleanly toggles play/pause)
+        // 1. YouTube WebView
         if (_isWebViewSupported && _webViewController != null)
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _togglePlayPause,
-            child: WebViewWidget(
-              key: _webViewKey,
-              controller: _webViewController!,
-            ),
+          WebViewWidget(
+            key: _webViewKey,
+            controller: _webViewController!,
           )
         else
           _buildVideoThumbnailFallback(videoId),
+
+        // 2. Portrait Mode Tap Layer (Tapping video cleanly toggles play/pause)
+        if (!_isFullscreen)
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: _togglePlayPause,
+            ),
+          ),
 
         // 2. Loading / Buffering / Error Overlays
         if (_hasError)
@@ -893,31 +1247,32 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
           ),
 
         // 3. Corner Fullscreen Button (clean, minimal, does not obstruct video)
-        Positioned(
-          right: 10,
-          bottom: 10,
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(20),
-              onTap: _toggleFullscreen,
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.55),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  _isFullscreen
-                      ? Icons.fullscreen_exit_rounded
-                      : Icons.fullscreen_rounded,
-                  color: Colors.white,
-                  size: 20,
+        if (showCornerToggle)
+          Positioned(
+            right: 10,
+            bottom: 10,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: _toggleFullscreen,
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.55),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    _isFullscreen
+                        ? Icons.fullscreen_exit_rounded
+                        : Icons.fullscreen_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
                 ),
               ),
             ),
           ),
-        ),
       ],
     );
   }
