@@ -8,9 +8,11 @@ import '../models/learning_category.dart';
 import '../models/lesson.dart';
 import '../models/notification_item.dart';
 import '../models/parent_stats.dart';
+import '../models/quiz_level.dart';
 import '../models/quiz_question.dart';
 import '../models/reward_badge.dart';
 import '../models/story.dart';
+import 'quiz_levels_mock.dart';
 
 class MockData {
   MockData._();
@@ -1690,6 +1692,9 @@ class MockData {
     ...bodyLessons,
     ...scienceLessons,
   ];
+
+  // Quiz Levels with Progressive Difficulty & Authentic Animal Audio
+  static List<QuizLevel> get quizLevels => QuizLevelsMock.levels;
 
   // Quiz Questions (With Audio Prompts & Animal sounds)
   static const List<QuizQuestion> quizQuestions = [

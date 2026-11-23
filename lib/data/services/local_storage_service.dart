@@ -13,6 +13,8 @@ class LocalStorageService {
   static const String _keyMatchPairsUnlockedLevel =
       'lwf_match_pairs_unlocked_level';
   static const String _keyMatchPairsStars = 'lwf_match_pairs_stars';
+  static const String _keyQuizUnlockedLevel = 'lwf_quiz_unlocked_level';
+  static const String _keyQuizStars = 'lwf_quiz_stars';
 
   SharedPreferences? _prefs;
   ChildProfile? _cachedProfile;
@@ -21,6 +23,8 @@ class LocalStorageService {
   Set<String>? _cachedBadges;
   int? _cachedMatchPairsUnlockedLevel;
   Map<int, int>? _cachedMatchPairsStars;
+  int? _cachedQuizUnlockedLevel;
+  Map<int, int>? _cachedQuizStars;
 
   Future<void> init() async {
     _prefs ??= await SharedPreferences.getInstance();
@@ -197,6 +201,56 @@ class LocalStorageService {
       await init();
       final encoded = jsonEncode(map.map((k, v) => MapEntry(k.toString(), v)));
       await _prefs?.setString(_keyMatchPairsStars, encoded);
+    }
+  }
+
+  // --- Quiz Levels & Stars Persistence ---
+
+  int loadQuizUnlockedLevel() {
+    if (_cachedQuizUnlockedLevel != null) {
+      return _cachedQuizUnlockedLevel!;
+    }
+    final level = _prefs?.getInt(_keyQuizUnlockedLevel) ?? 1;
+    _cachedQuizUnlockedLevel = level;
+    return level;
+  }
+
+  Future<void> saveQuizUnlockedLevel(int level) async {
+    final current = loadQuizUnlockedLevel();
+    if (level > current) {
+      _cachedQuizUnlockedLevel = level;
+      await init();
+      await _prefs?.setInt(_keyQuizUnlockedLevel, level);
+    }
+  }
+
+  Map<int, int> loadQuizStars() {
+    if (_cachedQuizStars != null) return _cachedQuizStars!;
+    final raw = _prefs?.getString(_keyQuizStars);
+    if (raw == null) {
+      _cachedQuizStars = {};
+      return {};
+    }
+    try {
+      final Map<String, dynamic> decoded = jsonDecode(raw);
+      final map = decoded.map((k, v) => MapEntry(int.parse(k), v as int));
+      _cachedQuizStars = map;
+      return map;
+    } catch (_) {
+      _cachedQuizStars = {};
+      return {};
+    }
+  }
+
+  Future<void> saveQuizStars(int level, int stars) async {
+    final map = Map<int, int>.from(loadQuizStars());
+    final currentStars = map[level] ?? 0;
+    if (stars > currentStars) {
+      map[level] = stars;
+      _cachedQuizStars = map;
+      await init();
+      final encoded = jsonEncode(map.map((k, v) => MapEntry(k.toString(), v)));
+      await _prefs?.setString(_keyQuizStars, encoded);
     }
   }
 }

@@ -106,6 +106,71 @@ void main() {
       cubit.submitAnswer();
       expect(cubit.state.isSubmitted, true);
     });
+
+    test('QuizCubit level progression, star scoring, and unlock flow', () async {
+      final storage = LocalStorageService();
+      await storage.init();
+      final repo = MockLearningRepository(storage);
+      final cubit = QuizCubit(repo);
+
+      expect(cubit.state.currentLevelNumber, 1);
+      expect(cubit.state.unlockedLevel, 1);
+      expect(cubit.state.questions.length, 4);
+
+      // Answer all 4 questions correctly in Level 1
+      for (int i = 0; i < 4; i++) {
+        final q = cubit.state.currentQuestion!;
+        cubit.selectOption(q.correctOptionIndex);
+        cubit.submitAnswer();
+        cubit.nextQuestion();
+      }
+
+      // Quiz completed with 3 stars and level 2 unlocked
+      expect(cubit.state.isQuizCompleted, true);
+      expect(cubit.state.score, 4);
+      expect(cubit.state.starsEarned, 3);
+      expect(cubit.state.unlockedLevel, 2);
+      expect(cubit.state.levelStars[1], 3);
+
+      // Unlock and start level 2
+      cubit.unlockNextLevel();
+      expect(cubit.state.currentLevelNumber, 2);
+      expect(cubit.state.isQuizCompleted, false);
+      expect(cubit.state.currentQuestionIndex, 0);
+    });
+
+    test('Quiz Levels 1-10 progressive difficulty & animal sounds validation', () {
+      final levels = MockData.quizLevels;
+      expect(levels.length, 10);
+
+      final difficulties = levels.map((l) => l.difficulty).toList();
+      expect(difficulties[0], 'Very Easy');
+      expect(difficulties[1], 'Very Easy');
+      expect(difficulties[2], 'Easy');
+      expect(difficulties[3], 'Easy');
+      expect(difficulties[4], 'Medium');
+      expect(difficulties[5], 'Medium');
+      expect(difficulties[6], 'Hard');
+      expect(difficulties[7], 'Hard');
+      expect(difficulties[8], 'Very Hard');
+      expect(difficulties[9], 'Very Hard');
+
+      // Verify questions have human prompts and genuine animal sounds
+      for (final level in levels) {
+        expect(level.questions.length, greaterThanOrEqualTo(3));
+        for (final q in level.questions) {
+          expect(q.humanPrompt, isNotNull);
+          expect(q.options.length, 4);
+          if (q.animalSound != null) {
+            expect(
+              AppAudioService.animalSoundAssets.containsKey(q.animalSound!),
+              true,
+              reason: 'Animal sound key ${q.animalSound} must exist in AppAudioService.animalSoundAssets',
+            );
+          }
+        }
+      }
+    });
   });
 
   group('Real Animal Audio Assets & AudioService', () {

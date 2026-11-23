@@ -7,6 +7,7 @@ import '../models/reward_badge.dart';
 import '../models/story.dart';
 import '../models/notification_item.dart';
 import '../models/parent_stats.dart';
+import '../models/quiz_level.dart';
 import '../services/local_storage_service.dart';
 
 abstract class LearningRepository {
@@ -14,6 +15,12 @@ abstract class LearningRepository {
   List<Lesson> getLessons(String categoryId);
   void markLessonCompleted(String lessonId);
   List<QuizQuestion> getQuizQuestions();
+  List<QuizLevel> getQuizLevels();
+  QuizLevel? getQuizLevel(int levelNumber);
+  int getQuizUnlockedLevel();
+  void saveQuizUnlockedLevel(int level);
+  Map<int, int> getQuizStars();
+  void saveQuizStars(int level, int stars);
   List<DailyChallengeItem> getDailyChallenges();
   void markChallengeCompleted(String challengeId);
   List<RewardBadge> getBadges();
@@ -119,6 +126,34 @@ class MockLearningRepository implements LearningRepository {
   @override
   List<QuizQuestion> getQuizQuestions() =>
       List.unmodifiable(MockData.quizQuestions);
+
+  @override
+  List<QuizLevel> getQuizLevels() => List.unmodifiable(MockData.quizLevels);
+
+  @override
+  QuizLevel? getQuizLevel(int levelNumber) {
+    try {
+      return MockData.quizLevels.firstWhere((l) => l.levelNumber == levelNumber);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  int getQuizUnlockedLevel() => _storage?.loadQuizUnlockedLevel() ?? 1;
+
+  @override
+  void saveQuizUnlockedLevel(int level) {
+    _storage?.saveQuizUnlockedLevel(level);
+  }
+
+  @override
+  Map<int, int> getQuizStars() => _storage?.loadQuizStars() ?? {};
+
+  @override
+  void saveQuizStars(int level, int stars) {
+    _storage?.saveQuizStars(level, stars);
+  }
 
   @override
   List<DailyChallengeItem> getDailyChallenges() =>

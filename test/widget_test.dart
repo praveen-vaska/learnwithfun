@@ -12,6 +12,8 @@ import 'package:learnwithfun/data/repositories/user_repository.dart';
 import 'package:learnwithfun/features/stories/kid_video_player_screen.dart';
 import 'package:learnwithfun/features/stories/stories_screen.dart';
 import 'package:learnwithfun/features/mini_games/memory_match_screen.dart';
+import 'package:learnwithfun/features/quiz/quiz_intro_screen.dart';
+import 'package:learnwithfun/blocs/quiz_cubit.dart';
 
 void main() {
   setUp(() {
@@ -117,25 +119,30 @@ void main() {
     expect(find.text('Play ▶'), findsOneWidget);
   });
 
-  testWidgets('MemoryMatchScreen renders 10 progressive levels and level map', (
+  testWidgets('QuizIntroScreen renders 10 progressive levels and animal sound quiz map', (
     WidgetTester tester,
   ) async {
     final storage = LocalStorageService();
     await storage.init();
-    final userRepo = MockUserRepository(storage);
+    final learningRepo = MockLearningRepository(storage);
 
     await tester.pumpWidget(
-      BlocProvider(
-        create: (_) => UserCubit(userRepo),
-        child: const MaterialApp(home: MemoryMatchScreen()),
+      MultiRepositoryProvider(
+        providers: [
+          RepositoryProvider<LearningRepository>.value(value: learningRepo),
+        ],
+        child: BlocProvider<QuizCubit>(
+          create: (_) => QuizCubit(learningRepo),
+          child: const MaterialApp(home: QuizIntroScreen()),
+        ),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('Match Pairs Levels'), findsOneWidget);
-    expect(find.text('Solve Level to Unlock Next! 🚀'), findsOneWidget);
-    expect(find.text('Level 1'), findsOneWidget);
-    expect(find.text('Baby Farm'), findsOneWidget);
-    expect(find.text('Play ▶'), findsOneWidget);
+    expect(find.text('Animal Sounds Quiz'), findsOneWidget);
+    expect(find.text('10 Progressive Levels 🏆'), findsOneWidget);
+    expect(find.text('Real Animal Sounds!'), findsOneWidget);
+    expect(find.text('Play Level 1 ▶️'), findsOneWidget);
+    expect(find.text('Very Easy'), findsWidgets);
   });
 }
