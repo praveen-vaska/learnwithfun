@@ -715,5 +715,99 @@ void main() {
       expect(eval.isSuccess, true);
       expect(eval.coverage, greaterThanOrEqualTo(0.60));
     });
+
+    test('TracingGuide strictly rejects incomplete letter A when only 1 stroke is drawn', () {
+      const bounds = Rect.fromLTWH(50, 50, 200, 200);
+      final targetData = TracingGuide.getTargetData('A', bounds);
+      expect(targetData.componentCheckpoints.length, 3); // Left, right, crossbar
+
+      // Only trace the first stroke (left diagonal)
+      final incompleteStroke = [targetData.componentCheckpoints.first];
+
+      final eval = TracingGuide.evaluateTracing(
+        checkpoints: targetData.flatCheckpoints,
+        userStrokes: incompleteStroke,
+        componentCheckpoints: targetData.componentCheckpoints,
+        hitRadius: 26.0,
+        targetName: 'A',
+      );
+
+      // Must be rejected because right leg and crossbar are missing!
+      expect(eval.isSuccess, false);
+      expect(eval.rejectionReason, contains('all parts of "A"'));
+    });
+
+    test('TracingGuide strictly rejects incomplete word APPLE when letters are skipped', () {
+      const bounds = Rect.fromLTWH(20, 50, 400, 200);
+      final targetData = TracingGuide.getTargetData('APPLE', bounds);
+      expect(targetData.componentCheckpoints.length, 5); // A, P, P, L, E
+
+      // Only trace the first 2 letters ('A' and 'P') and skip 'P', 'L', 'E'
+      final partialStrokes = [
+        targetData.componentCheckpoints[0],
+        targetData.componentCheckpoints[1],
+      ];
+
+      final eval = TracingGuide.evaluateTracing(
+        checkpoints: targetData.flatCheckpoints,
+        userStrokes: partialStrokes,
+        componentCheckpoints: targetData.componentCheckpoints,
+        hitRadius: 26.0,
+        targetName: 'APPLE',
+      );
+
+      // Must be rejected because remaining letters are missing!
+      expect(eval.isSuccess, false);
+      expect(eval.rejectionReason, contains('Trace all letters in "APPLE"'));
+    });
+
+    test('TracingGuide strictly rejects wild rough lines outside the stencil', () {
+      const bounds = Rect.fromLTWH(50, 50, 200, 200);
+      final targetData = TracingGuide.getTargetData('A', bounds);
+
+      // A few points near the stencil, but 50 points scribbled wildly outside
+      final wildStrokes = [
+        // 5 points near stencil
+        targetData.flatCheckpoints.take(5).toList(),
+        // 40 random scribble points far away (0..40, 300..340)
+        List.generate(40, (i) => Offset(i.toDouble(), 350.0 + i)),
+      ];
+
+      final eval = TracingGuide.evaluateTracing(
+        checkpoints: targetData.flatCheckpoints,
+        userStrokes: wildStrokes,
+        componentCheckpoints: targetData.componentCheckpoints,
+        hitRadius: 26.0,
+        targetName: 'A',
+      );
+
+      // Must be rejected due to low accuracy ratio / rough scribbles
+      expect(eval.isSuccess, false);
+      expect(eval.accuracyRatio, lessThan(0.50));
+      expect(eval.rejectionReason, contains('dotted stencil'));
+    });
+
+    test('TracingGuide accepts fully and accurately traced word APPLE', () {
+      const bounds = Rect.fromLTWH(20, 50, 400, 200);
+      final targetData = TracingGuide.getTargetData('APPLE', bounds);
+
+      // Trace all 5 letters accurately (80% of each letter)
+      final allLettersStrokes = <List<Offset>>[];
+      for (final comp in targetData.componentCheckpoints) {
+        final count = (comp.length * 0.80).round();
+        allLettersStrokes.add(comp.take(count).toList());
+      }
+
+      final eval = TracingGuide.evaluateTracing(
+        checkpoints: targetData.flatCheckpoints,
+        userStrokes: allLettersStrokes,
+        componentCheckpoints: targetData.componentCheckpoints,
+        hitRadius: 26.0,
+        targetName: 'APPLE',
+      );
+
+      expect(eval.isSuccess, true);
+      expect(eval.coverage, greaterThanOrEqualTo(0.68));
+    });
   });
 }

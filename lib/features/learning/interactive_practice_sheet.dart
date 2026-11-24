@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -53,6 +54,10 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
 
   PracticeTab _currentTab = PracticeTab.voice;
   late AnimationController _pulseController;
+  Timer? _promptTimer;
+  Timer? _autoListenTimer;
+  Timer? _stageAdvanceTimer;
+  Timer? _autoDismissTimer;
 
   // --- Voice State ---
   int _voiceStage = 1; // 1 = Letter ('A'), 2 = Word ('A for Apple')
@@ -85,32 +90,32 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
 
   // Phonetic & common transcription variants for English letters
   static const Map<String, List<String>> _letterPhonetics = {
-    'A': ['a', 'ay', 'ei', 'eh', 'hey', 'letter a', 'apple'],
-    'B': ['b', 'be', 'bee', 'letter b', 'ball', 'boy'],
-    'C': ['c', 'see', 'sea', 'si', 'letter c', 'cat'],
-    'D': ['d', 'dee', 'the', 'letter d', 'dog'],
-    'E': ['e', 'ee', 'letter e', 'elephant', 'egg'],
-    'F': ['f', 'ef', 'eff', 'letter f', 'fish'],
-    'G': ['g', 'jee', 'gee', 'letter g', 'grapes'],
-    'H': ['h', 'aitch', 'eitch', 'letter h', 'hat', 'horse'],
-    'I': ['i', 'eye', 'ai', 'ay', 'letter i', 'ice cream', 'ice'],
-    'J': ['j', 'jay', 'letter j', 'jug', 'juice'],
-    'K': ['k', 'kay', 'letter k', 'kite'],
-    'L': ['l', 'el', 'ell', 'letter l', 'lion'],
-    'M': ['m', 'em', 'letter m', 'mango', 'monkey'],
-    'N': ['n', 'en', 'letter n', 'nest', 'nose'],
-    'O': ['o', 'oh', 'letter o', 'orange', 'owl'],
-    'P': ['p', 'pee', 'letter p', 'parrot', 'pen'],
-    'Q': ['q', 'cue', 'kew', 'letter q', 'queen'],
-    'R': ['r', 'ar', 'are', 'letter r', 'rabbit', 'rose'],
-    'S': ['s', 'es', 'ess', 'letter s', 'sun', 'star'],
-    'T': ['t', 'tee', 'tea', 'letter t', 'tiger', 'tree'],
-    'U': ['u', 'you', 'yu', 'letter u', 'umbrella'],
-    'V': ['v', 'vee', 'letter v', 'van', 'violin'],
-    'W': ['w', 'double u', 'double you', 'letter w', 'watch'],
-    'X': ['x', 'ex', 'letter x', 'xylophone'],
-    'Y': ['y', 'why', 'wai', 'letter y', 'yak', 'yellow'],
-    'Z': ['z', 'zed', 'zee', 'letter z', 'zebra', 'zoo'],
+    'A': ['a', 'ay', 'ah', 'aye', 'eh', 'ei', 'hey', 'apple', 'hay'],
+    'B': ['b', 'be', 'bee', 'bea', 'ball', 'boy'],
+    'C': ['c', 'see', 'sea', 'cee', 'si', 'cat'],
+    'D': ['d', 'dee', 'di', 'dog'],
+    'E': ['e', 'ee', 'ea', 'elephant', 'egg'],
+    'F': ['f', 'ef', 'eff', 'fish'],
+    'G': ['g', 'gee', 'jee', 'ji', 'grapes'],
+    'H': ['h', 'aitch', 'ach', 'ha', 'he', 'hat', 'horse'],
+    'I': ['i', 'eye', 'ai', 'ay', 'aye', 'ice cream', 'ice'],
+    'J': ['j', 'jay', 'je', 'jug', 'juice'],
+    'K': ['k', 'kay', 'ka', 'kite'],
+    'L': ['l', 'el', 'ell', 'lion'],
+    'M': ['m', 'em', 'ma', 'mango', 'monkey'],
+    'N': ['n', 'en', 'na', 'nest', 'nose'],
+    'O': ['o', 'oh', 'ow', 'orange', 'owl'],
+    'P': ['p', 'pee', 'pi', 'parrot', 'pen'],
+    'Q': ['q', 'cue', 'queue', 'kew', 'queen'],
+    'R': ['r', 'ar', 'are', 'our', 'rabbit', 'rose'],
+    'S': ['s', 'es', 'ess', 'sun', 'star'],
+    'T': ['t', 'tee', 'tea', 'ti', 'tiger', 'tree'],
+    'U': ['u', 'you', 'yu', 'oo', 'umbrella'],
+    'V': ['v', 'vee', 'we', 'van', 'violin'],
+    'W': ['w', 'double u', 'double you', 'double-u', 'watch'],
+    'X': ['x', 'ex', 'axe', 'xylophone'],
+    'Y': ['y', 'why', 'wai', 'yak', 'yellow'],
+    'Z': ['z', 'zed', 'zee', 'ze', 'zebra', 'zoo'],
   };
 
   static const Map<String, List<String>> _numberPhonetics = {
@@ -140,6 +145,10 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
 
   @override
   void dispose() {
+    _promptTimer?.cancel();
+    _autoListenTimer?.cancel();
+    _stageAdvanceTimer?.cancel();
+    _autoDismissTimer?.cancel();
     _pulseController.dispose();
     _stopListening();
     super.dispose();
@@ -224,9 +233,23 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
   }
 
   Future<void> _playCurrentVoicePrompt() async {
-    await Future.delayed(const Duration(milliseconds: 300));
-    if (!mounted) return;
-    AppAudioService.instance.speak(_currentVoicePrompt);
+    _promptTimer?.cancel();
+    _autoListenTimer?.cancel();
+
+    _promptTimer = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      AppAudioService.instance.speak(_currentVoicePrompt);
+
+      // Automatically activate microphone listening right after the TTS prompt finishes
+      _autoListenTimer = Timer(const Duration(milliseconds: 1400), () {
+        if (!mounted || _currentTab != PracticeTab.voice) return;
+        if (!_isListening &&
+            ((_voiceStage == 1 && !_voiceStage1Success) ||
+                (_voiceStage == 2 && !_voiceStage2Success))) {
+          _startListening();
+        }
+      });
+    });
   }
 
   // -------------------------------------------------------------
@@ -295,9 +318,11 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
           });
           _evaluateSpeech(words);
         },
-        listenFor: const Duration(seconds: 8),
+        listenFor: const Duration(seconds: 15),
         pauseFor: const Duration(seconds: 3),
         localeId: 'en_US',
+        partialResults: true,
+        cancelOnError: false,
       );
     } catch (e) {
       debugPrint('Speech listening error: $e');
@@ -317,8 +342,17 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
 
   /// Evaluates speech strictly and triggers automatic success when matched
   void _evaluateSpeech(String rawWords) {
-    final lower = rawWords.toLowerCase().trim();
-    if (lower.isEmpty) return;
+    if (rawWords.trim().isEmpty) return;
+
+    // Clean transcription: lower-case, strip punctuation
+    String clean = rawWords.toLowerCase().replaceAll(RegExp(r'[^a-z0-9\s]'), ' ').trim();
+    // Strip common filler/prompt prefixes if child repeats the prompt ("say a", "letter a")
+    for (final prefix in ['say ', 'letter ', 'number ', 'it is ', "it's "]) {
+      if (clean.startsWith(prefix)) {
+        clean = clean.substring(prefix.length).trim();
+      }
+    }
+    if (clean.isEmpty) return;
 
     if (_voiceStage == 1) {
       final symbol = _stage1Symbol.toUpperCase();
@@ -327,17 +361,21 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
       if (widget.lesson.categoryId == 'abc') {
         // Alphabet matching: check exact letter or phonetic variants
         final validVariants = _letterPhonetics[symbol] ?? [symbol.toLowerCase()];
-        final tokens = lower.split(RegExp(r'[\s,\.\!\?]+'));
-        isMatch = validVariants.any((v) => lower == v || tokens.contains(v));
+        final tokens = clean.split(RegExp(r'\s+'));
+        isMatch = validVariants.any(
+          (v) => clean == v || tokens.contains(v) || clean.startsWith('$v ') || clean.endsWith(' $v'),
+        );
       } else if (widget.lesson.categoryId == '123') {
         // Number matching
         final validVariants = _numberPhonetics[symbol] ?? [symbol.toLowerCase()];
-        final tokens = lower.split(RegExp(r'[\s,\.\!\?]+'));
-        isMatch = validVariants.any((v) => lower == v || tokens.contains(v));
+        final tokens = clean.split(RegExp(r'\s+'));
+        isMatch = validVariants.any(
+          (v) => clean == v || tokens.contains(v) || clean.startsWith('$v ') || clean.endsWith(' $v'),
+        );
       } else {
         // Words (animals, shapes, etc.)
         final target = _stage1Symbol.toLowerCase();
-        isMatch = lower.contains(target);
+        isMatch = clean.contains(target);
       }
 
       if (isMatch) {
@@ -355,8 +393,8 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
       final word = _stage2Word.toLowerCase();
       final letter = _stage1Symbol.toLowerCase();
 
-      final isMatch = lower.contains(word) ||
-          (lower.contains(letter) && (lower.contains('for') || lower.contains('is')));
+      final isMatch = clean.contains(word) ||
+          (clean.contains(letter) && (clean.contains('for') || clean.contains('is') || clean.contains(word)));
 
       if (isMatch) {
         if (!_voiceStage2Success) {
@@ -381,8 +419,9 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
         _voiceFeedback = 'Awesome! You said: "$spokenText" ⭐';
       });
 
-      // Automatically advance to Stage 2 after 1.2 seconds
-      Future.delayed(const Duration(milliseconds: 1400), () {
+      // Automatically advance to Stage 2 after 1.4 seconds
+      _stageAdvanceTimer?.cancel();
+      _stageAdvanceTimer = Timer(const Duration(milliseconds: 1400), () {
         if (!mounted) return;
         setState(() {
           _voiceStage = 2;
@@ -402,6 +441,14 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
       AppAudioService.instance.speak(
         'Outstanding job! You said both $_stage1Symbol and $_stage2Word! 15 stars for you!',
       );
+
+      // Auto-dismiss after 2.4 seconds celebration to return child back to lesson screen
+      _autoDismissTimer?.cancel();
+      _autoDismissTimer = Timer(const Duration(milliseconds: 2400), () {
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
+      });
     }
   }
 
@@ -444,18 +491,18 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
       canvasSize.height - (marginY * 2),
     );
 
-    final paths = TracingGuide.getScaledPaths(target, bounds);
-    final checkpoints = TracingGuide.extractCheckpoints(paths);
-
+    final targetData = TracingGuide.getTargetData(target, bounds);
     final strokePoints = _activeStrokes
         .where((s) => !s.isEraser)
         .map((s) => s.points)
         .toList();
 
     final eval = TracingGuide.evaluateTracing(
-      checkpoints: checkpoints,
+      checkpoints: targetData.flatCheckpoints,
       userStrokes: strokePoints,
-      hitRadius: 44.0,
+      componentCheckpoints: targetData.componentCheckpoints,
+      hitRadius: 26.0,
+      targetName: target,
     );
 
     // If child met the accuracy requirement, automatically trigger success!
@@ -502,21 +549,21 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
       canvasSize.height - (marginY * 2),
     );
 
-    final paths = TracingGuide.getScaledPaths(target, bounds);
-    final checkpoints = TracingGuide.extractCheckpoints(paths);
-
+    final targetData = TracingGuide.getTargetData(target, bounds);
     final strokePoints = _activeStrokes
         .where((s) => !s.isEraser)
         .map((s) => s.points)
         .toList();
 
     final eval = TracingGuide.evaluateTracing(
-      checkpoints: checkpoints,
+      checkpoints: targetData.flatCheckpoints,
       userStrokes: strokePoints,
-      hitRadius: 44.0,
+      componentCheckpoints: targetData.componentCheckpoints,
+      hitRadius: 26.0,
+      targetName: target,
     );
 
-    if (eval.totalPoints < 8) {
+    if (eval.totalPoints < 10) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -530,14 +577,10 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
     }
 
     if (!eval.isSuccess) {
-      final percent = (eval.coverage * 100).toInt();
+      final msg = eval.rejectionReason ?? 'Trace accurately on the dotted stencil of "$target"! ✏️';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            percent < 25
-                ? 'Trace accurately on the dotted stencil of "$target"! ✏️'
-                : 'Almost there! You covered $percent% of "$target". Trace the rest of the lines! ✨',
-          ),
+          content: Text(msg),
           duration: const Duration(seconds: 3),
           backgroundColor: AppColors.orange,
         ),
@@ -564,8 +607,9 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
         ),
       );
 
-      // Automatically advance to Step 2 after 1.2s
-      Future.delayed(const Duration(milliseconds: 1400), () {
+      // Automatically advance to Step 2 after 1.4s
+      _stageAdvanceTimer?.cancel();
+      _stageAdvanceTimer = Timer(const Duration(milliseconds: 1400), () {
         if (!mounted) return;
         setState(() {
           _drawStage = 2;
@@ -582,6 +626,14 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
       AppAudioService.instance.speak(
         'Master artist! You traced both $_stage1Symbol and $_stage2Word! 15 stars earned!',
       );
+
+      // Automatically dismiss sheet after 2.4s celebration so user returns to lesson screen
+      _autoDismissTimer?.cancel();
+      _autoDismissTimer = Timer(const Duration(milliseconds: 2400), () {
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
+      });
     }
   }
 
@@ -1004,28 +1056,39 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
 
           const SizedBox(height: 16),
 
-          // Manual Fallback Button (Kept for young toddlers who speak softly)
-          OutlinedButton.icon(
-            onPressed: () => _onVoiceSuccess(
-              _voiceStage == 1
-                  ? _stage1Symbol
-                  : '$_stage1Symbol for $_stage2Word',
-            ),
-            icon: const Icon(Icons.star_rounded, color: AppColors.orange),
-            label: Text(
-              _voiceStage == 1
-                  ? 'I Said "$_stage1Symbol"! 🌟'
-                  : 'I Said "$_stage1Symbol for $_stage2Word"! 🌟 (+15 XP)',
-            ),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.orange,
-              side: const BorderSide(color: AppColors.orange, width: 1.5),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
+          if (_voiceStage2Success) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: AppButton(
+                label: 'Done! Back to Lesson 🚀',
+                variant: AppButtonVariant.primary,
+                onPressed: () => Navigator.of(context).pop(),
               ),
             ),
-          ),
+          ] else ...[
+            // Manual Fallback Button (Kept for young toddlers who speak softly)
+            OutlinedButton.icon(
+              onPressed: () => _onVoiceSuccess(
+                _voiceStage == 1
+                    ? _stage1Symbol
+                    : '$_stage1Symbol for $_stage2Word',
+              ),
+              icon: const Icon(Icons.star_rounded, color: AppColors.orange),
+              label: Text(
+                _voiceStage == 1
+                    ? 'I Said "$_stage1Symbol"! 🌟'
+                    : 'I Said "$_stage1Symbol for $_stage2Word"! 🌟 (+15 XP)',
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.orange,
+                side: const BorderSide(color: AppColors.orange, width: 1.5),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1194,9 +1257,7 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
                       );
 
                       final target = _currentDrawTarget;
-                      final paths = TracingGuide.getScaledPaths(target, bounds);
-                      final checkpoints =
-                          TracingGuide.extractCheckpoints(paths);
+                      final targetData = TracingGuide.getTargetData(target, bounds);
 
                       final strokePoints = _activeStrokes
                           .where((s) => !s.isEraser)
@@ -1204,9 +1265,11 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
                           .toList();
 
                       final eval = TracingGuide.evaluateTracing(
-                        checkpoints: checkpoints,
+                        checkpoints: targetData.flatCheckpoints,
                         userStrokes: strokePoints,
-                        hitRadius: 44.0,
+                        componentCheckpoints: targetData.componentCheckpoints,
+                        hitRadius: 26.0,
+                        targetName: target,
                       );
 
                       return Stack(
@@ -1231,8 +1294,8 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
                             child: CustomPaint(
                               painter: AccurateTracingPainter(
                                 targetSymbol: target,
-                                paths: paths,
-                                checkpoints: checkpoints,
+                                paths: targetData.allPaths,
+                                checkpoints: targetData.flatCheckpoints,
                                 hitIndices: eval.hitIndices,
                                 strokes: _activeStrokes,
                               ),
@@ -1326,18 +1389,21 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
               child: Builder(
                 builder: (btnCtx) {
+                  final isDone = _drawStage == 2 && _drawStage2Success;
                   return AppButton(
-                    label: (_drawStage == 1
-                            ? _drawStage1Success
-                            : _drawStage2Success)
-                        ? 'Great Job! 🌟 +15 XP'
-                        : 'Check My Work 🎨',
-                    variant: (_drawStage == 1
-                            ? _drawStage1Success
-                            : _drawStage2Success)
+                    label: isDone
+                        ? 'Done! Back to Lesson 🚀'
+                        : (_drawStage == 1 && _drawStage1Success)
+                            ? 'Great Job! 🌟 Trace Step 2'
+                            : 'Check My Work 🎨',
+                    variant: isDone || (_drawStage == 1 && _drawStage1Success)
                         ? AppButtonVariant.primary
                         : AppButtonVariant.secondary,
                     onPressed: () {
+                      if (isDone) {
+                        Navigator.of(context).pop();
+                        return;
+                      }
                       final box = context.findRenderObject() as RenderBox?;
                       final size = box?.size ?? const Size(360, 400);
                       _checkDrawingManual(size);

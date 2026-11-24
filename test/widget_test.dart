@@ -256,5 +256,18 @@ void main() {
     expect(find.text('1. Trace "A"'), findsOneWidget);
     expect(find.text('2. Trace "Apple"'), findsOneWidget);
     expect(find.text('Check My Work 🎨'), findsOneWidget);
+
+    // Tap "Check My Work 🎨" without drawing -> shows prompt SnackBar
+    await tester.tap(find.text('Check My Work 🎨'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Close the sheet via close button or completion
+    await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    // Verify back on LessonScreen with Try It! 🌟 visible and sheet closed
+    expect(find.text('Try It! 🌟'), findsOneWidget);
+    expect(find.text('Duolingo Kid Practice'), findsNothing);
   });
 }

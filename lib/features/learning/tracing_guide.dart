@@ -486,16 +486,115 @@ class TracingGuide {
     return checkpoints;
   }
 
-  /// Calculates the fraction of checkpoints visited by the user's strokes.
-  /// Tolerance hit radius is 40.0 - 45.0 px for toddlers.
+  /// Extracts structured target data with component-level checkpoint segmentation
+  /// (e.g. each stroke of a letter, or each character in a word).
+  static TracingTargetData getTargetData(String text, Rect bounds) {
+    final clean = text.trim();
+    if (clean.isEmpty) {
+      return TracingTargetData(
+        allPaths: [],
+        componentCheckpoints: [],
+        flatCheckpoints: [],
+        componentLabels: [],
+      );
+    }
+
+    final allPaths = <Path>[];
+    final componentCheckpoints = <List<Offset>>[];
+    final flatCheckpoints = <Offset>[];
+    final componentLabels = <String>[];
+
+    if (clean.length == 1) {
+      // Single character (e.g. 'A', '1')
+      final charHeight = bounds.height * 0.85;
+      final charWidth = min(bounds.width * 0.75, charHeight * 0.75);
+      final charBounds = Rect.fromCenter(
+        center: bounds.center,
+        width: charWidth,
+        height: charHeight,
+      );
+
+      final normPaths = getNormalizedPathsForChar(clean);
+      final scaled = _scalePaths(normPaths, charBounds);
+      allPaths.addAll(scaled);
+
+      for (int i = 0; i < scaled.length; i++) {
+        final pts = extractCheckpoints([scaled[i]], pointsPerPath: 16);
+        if (pts.isNotEmpty) {
+          componentCheckpoints.add(pts);
+          flatCheckpoints.addAll(pts);
+          componentLabels.add('${clean.toUpperCase()} part ${i + 1}');
+        }
+      }
+    } else {
+      // Multi-character word (e.g. 'APPLE', 'ONE', 'MOO')
+      final word = clean.toUpperCase();
+      final letterCount = word.length;
+
+      final maxAvailableWidth = bounds.width * 0.92;
+      final maxAvailableHeight = bounds.height * 0.75;
+
+      double letterHeight = maxAvailableHeight;
+      double letterWidth = letterHeight * 0.60;
+      double gap = letterWidth * 0.28;
+
+      double totalWordWidth = (letterCount * letterWidth) + ((letterCount - 1) * gap);
+      if (totalWordWidth > maxAvailableWidth) {
+        final scale = maxAvailableWidth / totalWordWidth;
+        letterHeight *= scale;
+        letterWidth *= scale;
+        gap *= scale;
+        totalWordWidth = maxAvailableWidth;
+      }
+
+      final startX = bounds.left + (bounds.width - totalWordWidth) / 2;
+      final startY = bounds.top + (bounds.height - letterHeight) / 2;
+
+      for (int i = 0; i < letterCount; i++) {
+        final char = word[i];
+        final charLeft = startX + (i * (letterWidth + gap));
+        final charBounds = Rect.fromLTWH(charLeft, startY, letterWidth, letterHeight);
+        final normPaths = getNormalizedPathsForChar(char);
+        final scaledCharPaths = _scalePaths(normPaths, charBounds);
+        allPaths.addAll(scaledCharPaths);
+
+        final charPts = extractCheckpoints(scaledCharPaths, pointsPerPath: 14);
+        if (charPts.isNotEmpty) {
+          componentCheckpoints.add(charPts);
+          flatCheckpoints.addAll(charPts);
+          componentLabels.add(char);
+        }
+      }
+    }
+
+    return TracingTargetData(
+      allPaths: allPaths,
+      componentCheckpoints: componentCheckpoints,
+      flatCheckpoints: flatCheckpoints,
+      componentLabels: componentLabels,
+    );
+  }
+
+  /// Calculates the fraction of checkpoints visited by the user's strokes,
+  /// strictly enforcing:
+  /// 1. Overall checkpoint coverage (>= 68%).
+  /// 2. Every single component / stroke / character has adequate coverage (>= 45%),
+  ///    preventing half-drawn letters (e.g. drawing 1 leg of 'A') or skipped letters in words.
+  /// 3. Off-target scribble rejection (at least 50% of user points must be on the stencil).
   static TracingEvaluation evaluateTracing({
     required List<Offset> checkpoints,
     required List<List<Offset>> userStrokes,
-    double hitRadius = 42.0,
+    List<List<Offset>>? componentCheckpoints,
+    double hitRadius = 26.0,
+    double minOverallCoverage = 0.68,
+    double minComponentCoverage = 0.45,
+    double minAccuracyRatio = 0.50,
+    String targetName = '',
   }) {
     if (checkpoints.isEmpty) {
       return TracingEvaluation(
         coverage: 1.0,
+        accuracyRatio: 1.0,
         totalPoints: 0,
         hitIndices: {},
         isSuccess: true,
@@ -511,15 +610,31 @@ class TracingGuide {
     if (allUserPoints.isEmpty) {
       return TracingEvaluation(
         coverage: 0.0,
+        accuracyRatio: 0.0,
         totalPoints: 0,
         hitIndices: {},
         isSuccess: false,
+        rejectionReason: 'Trace on the dotted lines to begin!',
+      );
+    }
+
+    // Minimum stroke points required to avoid passing accidental taps
+    if (allUserPoints.length < 4) {
+      return TracingEvaluation(
+        coverage: 0.0,
+        accuracyRatio: 0.0,
+        totalPoints: allUserPoints.length,
+        hitIndices: {},
+        isSuccess: false,
+        rejectionReason: 'Keep tracing along the dotted lines! 👆',
       );
     }
 
     final hitIndices = <int>{};
     final hitRadiusSquared = hitRadius * hitRadius;
+    final onTargetThresholdSquared = (hitRadius * 1.35) * (hitRadius * 1.35);
 
+    // 1. Calculate checkpoints hit
     for (int i = 0; i < checkpoints.length; i++) {
       final cp = checkpoints[i];
       for (final up in allUserPoints) {
@@ -532,30 +647,108 @@ class TracingGuide {
       }
     }
 
+    // 2. Calculate on-target points ratio (detects off-target scribbles)
+    int onTargetUserPoints = 0;
+    for (final up in allUserPoints) {
+      bool isNear = false;
+      for (final cp in checkpoints) {
+        final dx = cp.dx - up.dx;
+        final dy = cp.dy - up.dy;
+        if ((dx * dx + dy * dy) <= onTargetThresholdSquared) {
+          isNear = true;
+          break;
+        }
+      }
+      if (isNear) {
+        onTargetUserPoints++;
+      }
+    }
+
+    final accuracyRatio = onTargetUserPoints / allUserPoints.length;
     final coverage = hitIndices.length / checkpoints.length;
 
-    // Must trace at least 60% of the dots to succeed
-    final isSuccess = coverage >= 0.60;
+    // 3. Verify each component (each stroke of letter, or each letter in word)
+    bool allComponentsSatisfied = true;
+    if (componentCheckpoints != null && componentCheckpoints.isNotEmpty) {
+      int offsetTracker = 0;
+      for (int c = 0; c < componentCheckpoints.length; c++) {
+        final compList = componentCheckpoints[c];
+        int compHits = 0;
+        for (int p = 0; p < compList.length; p++) {
+          final globalIndex = offsetTracker + p;
+          if (hitIndices.contains(globalIndex)) {
+            compHits++;
+          }
+        }
+        offsetTracker += compList.length;
+
+        final compCoverage = compList.isEmpty ? 1.0 : (compHits / compList.length);
+        if (compCoverage < minComponentCoverage) {
+          allComponentsSatisfied = false;
+          break;
+        }
+      }
+    }
+
+    // Determine rejection reason if not successful
+    String? rejectionReason;
+    bool isSuccess = false;
+
+    if (accuracyRatio < minAccuracyRatio) {
+      rejectionReason = 'Trace carefully on the dotted stencil! ✏️';
+    } else if (!allComponentsSatisfied) {
+      if (targetName.length > 1) {
+        rejectionReason = 'Trace all letters in "$targetName"! You missed some letters! 🔤';
+      } else {
+        rejectionReason = 'Trace all parts of "$targetName"! Don\'t miss any lines! ✏️';
+      }
+    } else if (coverage < minOverallCoverage) {
+      final pct = (coverage * 100).toInt();
+      rejectionReason = 'Almost there! You traced $pct% of "$targetName". Trace the rest of the lines! ✨';
+    } else {
+      isSuccess = true;
+    }
 
     return TracingEvaluation(
       coverage: coverage,
+      accuracyRatio: accuracyRatio,
       totalPoints: allUserPoints.length,
       hitIndices: hitIndices,
       isSuccess: isSuccess,
+      rejectionReason: rejectionReason,
     );
   }
 }
 
+/// Structured target data for a tracing exercise
+class TracingTargetData {
+  final List<Path> allPaths;
+  final List<List<Offset>> componentCheckpoints;
+  final List<Offset> flatCheckpoints;
+  final List<String> componentLabels;
+
+  TracingTargetData({
+    required this.allPaths,
+    required this.componentCheckpoints,
+    required this.flatCheckpoints,
+    required this.componentLabels,
+  });
+}
+
 class TracingEvaluation {
   final double coverage;
+  final double accuracyRatio;
   final int totalPoints;
   final Set<int> hitIndices;
   final bool isSuccess;
+  final String? rejectionReason;
 
   TracingEvaluation({
     required this.coverage,
+    this.accuracyRatio = 1.0,
     required this.totalPoints,
     required this.hitIndices,
     required this.isSuccess,
+    this.rejectionReason,
   });
 }
