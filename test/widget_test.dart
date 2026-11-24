@@ -18,6 +18,8 @@ import 'package:learnwithfun/features/auth/screens/login_screen.dart';
 import 'package:learnwithfun/features/auth/screens/signup_screen.dart';
 import 'package:learnwithfun/data/repositories/auth_repository.dart';
 import 'package:learnwithfun/blocs/auth_cubit.dart';
+import 'package:learnwithfun/blocs/learning_cubit.dart';
+import 'package:learnwithfun/features/learning/lesson_screen.dart';
 
 void main() {
   setUp(() {
@@ -204,5 +206,51 @@ void main() {
     expect(find.text('Parent / Child Name'), findsOneWidget);
     expect(find.text('Create Account 🎉'), findsOneWidget);
     expect(find.text('Login Here'), findsOneWidget);
+  });
+
+  testWidgets('LessonScreen renders Previous, Try It! and Next buttons', (
+    WidgetTester tester,
+  ) async {
+    final storage = LocalStorageService();
+    await storage.init();
+    final learningRepo = MockLearningRepository(storage);
+    final userRepo = MockUserRepository(storage);
+
+    final learningCubit = LearningCubit(learningRepo);
+    learningCubit.selectCategory('abc');
+    final userCubit = UserCubit(userRepo);
+
+    await tester.pumpWidget(
+      MultiBlocProvider(
+        providers: [
+          BlocProvider<LearningCubit>.value(value: learningCubit),
+          BlocProvider<UserCubit>.value(value: userCubit),
+        ],
+        child: const MaterialApp(home: LessonScreen()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Previous'), findsOneWidget);
+    expect(find.text('Try It! 🌟'), findsOneWidget);
+    expect(find.text('Next'), findsOneWidget);
+
+    // Tap Try It! 🌟 button to open Duolingo practice sheet
+    await tester.tap(find.text('Try It! 🌟'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Duolingo Kid Practice'), findsOneWidget);
+    expect(find.text('Speak & Spell 🎤'), findsOneWidget);
+    expect(find.text('Trace & Draw ✏️'), findsOneWidget);
+    expect(find.text('I Said It! 🌟 (+15 XP)'), findsOneWidget);
+
+    // Switch to Trace & Draw tab
+    await tester.tap(find.text('Trace & Draw ✏️'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(find.text('Check My Work 🎨'), findsOneWidget);
   });
 }

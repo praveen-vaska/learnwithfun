@@ -10,6 +10,7 @@ import '../../core/widgets/app_audio_indicator.dart';
 import '../../core/animations/kid_animations.dart';
 import '../../blocs/learning_cubit.dart';
 import '../../blocs/user_cubit.dart';
+import 'interactive_practice_sheet.dart';
 
 class LessonScreen extends StatelessWidget {
   const LessonScreen({super.key});
@@ -272,6 +273,7 @@ class LessonScreen extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
+                    flex: 4,
                     child: AppButton(
                       label: 'Previous',
                       variant: AppButtonVariant.outline,
@@ -283,14 +285,30 @@ class LessonScreen extends StatelessWidget {
                           : null,
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 8),
                   Expanded(
+                    flex: 5,
+                    child: AppButton(
+                      label: 'Try It! 🌟',
+                      variant: AppButtonVariant.secondary,
+                      onPressed: () {
+                        AppAudioService.instance.playTapSound();
+                        InteractivePracticeSheet.show(
+                          context,
+                          lesson: lesson,
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 4,
                     child: AppButton(
                       label: currentIndex < total - 1 ? 'Next' : 'Finish',
                       icon: const Icon(
                         Icons.arrow_forward_rounded,
                         color: Colors.white,
-                        size: 20,
+                        size: 18,
                       ),
                       onPressed: () {
                         context.read<LearningCubit>().completeCurrentLesson();
