@@ -17,6 +17,8 @@ class LocalStorageService {
   static const String _keyQuizStars = 'lwf_quiz_stars';
 
   SharedPreferences? _prefs;
+  String? _currentUserId;
+
   ChildProfile? _cachedProfile;
   Set<String>? _cachedLessons;
   Set<String>? _cachedChallenges;
@@ -30,11 +32,33 @@ class LocalStorageService {
     _prefs ??= await SharedPreferences.getInstance();
   }
 
+  /// Sets the active user ID scope. All data will be saved & loaded specifically for this user.
+  void setScopeUser(String? userId) {
+    if (_currentUserId != userId) {
+      _currentUserId = userId;
+      _cachedProfile = null;
+      _cachedLessons = null;
+      _cachedChallenges = null;
+      _cachedBadges = null;
+      _cachedMatchPairsUnlockedLevel = null;
+      _cachedMatchPairsStars = null;
+      _cachedQuizUnlockedLevel = null;
+      _cachedQuizStars = null;
+    }
+  }
+
+  String _userKey(String baseKey) {
+    if (_currentUserId == null || _currentUserId!.isEmpty) {
+      return baseKey;
+    }
+    return '${baseKey}_$_currentUserId';
+  }
+
   // --- Profile Persistence ---
 
   ChildProfile? loadProfile() {
     if (_cachedProfile != null) return _cachedProfile;
-    final raw = _prefs?.getString(_keyProfile);
+    final raw = _prefs?.getString(_userKey(_keyProfile));
     if (raw == null) return null;
     try {
       final map = jsonDecode(raw) as Map<String, dynamic>;
@@ -92,14 +116,14 @@ class LocalStorageService {
       'screenTimeLimitMinutes': profile.screenTimeLimitMinutes,
       'breakReminderEnabled': profile.breakReminderEnabled,
     };
-    await _prefs?.setString(_keyProfile, jsonEncode(map));
+    await _prefs?.setString(_userKey(_keyProfile), jsonEncode(map));
   }
 
   // --- Completed Lessons Persistence ---
 
   Set<String> loadCompletedLessons() {
     if (_cachedLessons != null) return _cachedLessons!;
-    final list = _prefs?.getStringList(_keyCompletedLessons);
+    final list = _prefs?.getStringList(_userKey(_keyCompletedLessons));
     final set = list != null ? list.toSet() : <String>{};
     _cachedLessons = set;
     return set;
@@ -108,14 +132,14 @@ class LocalStorageService {
   Future<void> saveCompletedLessons(Set<String> lessonIds) async {
     _cachedLessons = Set.from(lessonIds);
     await init();
-    await _prefs?.setStringList(_keyCompletedLessons, lessonIds.toList());
+    await _prefs?.setStringList(_userKey(_keyCompletedLessons), lessonIds.toList());
   }
 
   // --- Daily Challenges Persistence ---
 
   Set<String> loadCompletedChallenges() {
     if (_cachedChallenges != null) return _cachedChallenges!;
-    final list = _prefs?.getStringList(_keyCompletedChallenges);
+    final list = _prefs?.getStringList(_userKey(_keyCompletedChallenges));
     final set = list != null ? list.toSet() : <String>{};
     _cachedChallenges = set;
     return set;
@@ -124,14 +148,14 @@ class LocalStorageService {
   Future<void> saveCompletedChallenges(Set<String> challengeIds) async {
     _cachedChallenges = Set.from(challengeIds);
     await init();
-    await _prefs?.setStringList(_keyCompletedChallenges, challengeIds.toList());
+    await _prefs?.setStringList(_userKey(_keyCompletedChallenges), challengeIds.toList());
   }
 
   // --- Unlocked Badges Persistence ---
 
   Set<String> loadUnlockedBadges() {
     if (_cachedBadges != null) return _cachedBadges!;
-    final list = _prefs?.getStringList(_keyUnlockedBadges);
+    final list = _prefs?.getStringList(_userKey(_keyUnlockedBadges));
     final set = list != null ? list.toSet() : <String>{};
     _cachedBadges = set;
     return set;
@@ -140,18 +164,18 @@ class LocalStorageService {
   Future<void> saveUnlockedBadges(Set<String> badgeIds) async {
     _cachedBadges = Set.from(badgeIds);
     await init();
-    await _prefs?.setStringList(_keyUnlockedBadges, badgeIds.toList());
+    await _prefs?.setStringList(_userKey(_keyUnlockedBadges), badgeIds.toList());
   }
 
   // --- Screen Time Tracking ---
 
   int loadTodayScreenTimeMinutes() {
-    return _prefs?.getInt(_keyDailyMinutes) ?? 25;
+    return _prefs?.getInt(_userKey(_keyDailyMinutes)) ?? 25;
   }
 
   Future<void> recordScreenTimeMinutes(int minutes) async {
     await init();
-    await _prefs?.setInt(_keyDailyMinutes, minutes);
+    await _prefs?.setInt(_userKey(_keyDailyMinutes), minutes);
   }
 
   // --- Match Pairs Levels & Stars Persistence ---
@@ -160,7 +184,7 @@ class LocalStorageService {
     if (_cachedMatchPairsUnlockedLevel != null) {
       return _cachedMatchPairsUnlockedLevel!;
     }
-    final level = _prefs?.getInt(_keyMatchPairsUnlockedLevel) ?? 1;
+    final level = _prefs?.getInt(_userKey(_keyMatchPairsUnlockedLevel)) ?? 1;
     _cachedMatchPairsUnlockedLevel = level;
     return level;
   }
@@ -170,13 +194,13 @@ class LocalStorageService {
     if (level > current) {
       _cachedMatchPairsUnlockedLevel = level;
       await init();
-      await _prefs?.setInt(_keyMatchPairsUnlockedLevel, level);
+      await _prefs?.setInt(_userKey(_keyMatchPairsUnlockedLevel), level);
     }
   }
 
   Map<int, int> loadMatchPairsStars() {
     if (_cachedMatchPairsStars != null) return _cachedMatchPairsStars!;
-    final raw = _prefs?.getString(_keyMatchPairsStars);
+    final raw = _prefs?.getString(_userKey(_keyMatchPairsStars));
     if (raw == null) {
       _cachedMatchPairsStars = {};
       return {};
@@ -200,7 +224,7 @@ class LocalStorageService {
       _cachedMatchPairsStars = map;
       await init();
       final encoded = jsonEncode(map.map((k, v) => MapEntry(k.toString(), v)));
-      await _prefs?.setString(_keyMatchPairsStars, encoded);
+      await _prefs?.setString(_userKey(_keyMatchPairsStars), encoded);
     }
   }
 
@@ -210,7 +234,7 @@ class LocalStorageService {
     if (_cachedQuizUnlockedLevel != null) {
       return _cachedQuizUnlockedLevel!;
     }
-    final level = _prefs?.getInt(_keyQuizUnlockedLevel) ?? 1;
+    final level = _prefs?.getInt(_userKey(_keyQuizUnlockedLevel)) ?? 1;
     _cachedQuizUnlockedLevel = level;
     return level;
   }
@@ -220,13 +244,13 @@ class LocalStorageService {
     if (level > current) {
       _cachedQuizUnlockedLevel = level;
       await init();
-      await _prefs?.setInt(_keyQuizUnlockedLevel, level);
+      await _prefs?.setInt(_userKey(_keyQuizUnlockedLevel), level);
     }
   }
 
   Map<int, int> loadQuizStars() {
     if (_cachedQuizStars != null) return _cachedQuizStars!;
-    final raw = _prefs?.getString(_keyQuizStars);
+    final raw = _prefs?.getString(_userKey(_keyQuizStars));
     if (raw == null) {
       _cachedQuizStars = {};
       return {};
@@ -250,7 +274,15 @@ class LocalStorageService {
       _cachedQuizStars = map;
       await init();
       final encoded = jsonEncode(map.map((k, v) => MapEntry(k.toString(), v)));
-      await _prefs?.setString(_keyQuizStars, encoded);
+      await _prefs?.setString(_userKey(_keyQuizStars), encoded);
     }
   }
+
+  SharedPreferences? get prefs => _prefs;
+
+  int getQuizUnlockedLevel() => loadQuizUnlockedLevel();
+  Future<void> setQuizUnlockedLevel(int level) => saveQuizUnlockedLevel(level);
+
+  int getMiniGameLevelStars(int level) => loadMatchPairsStars()[level] ?? 0;
+  Future<void> setMiniGameLevelStars(int level, int stars) => saveMatchPairsStars(level, stars);
 }

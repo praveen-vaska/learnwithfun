@@ -14,6 +14,10 @@ import 'package:learnwithfun/features/stories/stories_screen.dart';
 import 'package:learnwithfun/features/mini_games/memory_match_screen.dart';
 import 'package:learnwithfun/features/quiz/quiz_intro_screen.dart';
 import 'package:learnwithfun/blocs/quiz_cubit.dart';
+import 'package:learnwithfun/features/auth/screens/login_screen.dart';
+import 'package:learnwithfun/features/auth/screens/signup_screen.dart';
+import 'package:learnwithfun/data/repositories/auth_repository.dart';
+import 'package:learnwithfun/blocs/auth_cubit.dart';
 
 void main() {
   setUp(() {
@@ -144,5 +148,61 @@ void main() {
     expect(find.text('Real Animal Sounds!'), findsOneWidget);
     expect(find.text('Play Level 1 ▶️'), findsOneWidget);
     expect(find.text('Very Easy'), findsWidgets);
+  });
+
+  testWidgets('LoginScreen renders segmented phone/email toggle and demo quick-fill', (
+    WidgetTester tester,
+  ) async {
+    final storage = LocalStorageService();
+    await storage.init();
+    final authRepo = LocalAuthRepository(storage);
+
+    await tester.pumpWidget(
+      MultiRepositoryProvider(
+        providers: [
+          RepositoryProvider<AuthRepository>.value(value: authRepo),
+        ],
+        child: BlocProvider<AuthCubit>(
+          create: (_) => AuthCubit(authRepo, storage),
+          child: const MaterialApp(home: LoginScreen()),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Welcome Back! 👋'), findsOneWidget);
+    expect(find.text('📱 Mobile Number'), findsOneWidget);
+    expect(find.text('✉️ Email Address'), findsOneWidget);
+    expect(find.text('Login to LearnWithFun 🚀'), findsOneWidget);
+    expect(find.text('Sign Up Now'), findsOneWidget);
+    expect(find.text('Continue as Guest Explorer 🎈'), findsOneWidget);
+  });
+
+  testWidgets('SignUpScreen renders registration inputs and switch options', (
+    WidgetTester tester,
+  ) async {
+    final storage = LocalStorageService();
+    await storage.init();
+    final authRepo = LocalAuthRepository(storage);
+
+    await tester.pumpWidget(
+      MultiRepositoryProvider(
+        providers: [
+          RepositoryProvider<AuthRepository>.value(value: authRepo),
+        ],
+        child: BlocProvider<AuthCubit>(
+          create: (_) => AuthCubit(authRepo, storage),
+          child: const MaterialApp(home: SignUpScreen()),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Join Learn With Fun! 🚀'), findsOneWidget);
+    expect(find.text('Parent / Child Name'), findsOneWidget);
+    expect(find.text('Create Account 🎉'), findsOneWidget);
+    expect(find.text('Login Here'), findsOneWidget);
   });
 }

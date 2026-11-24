@@ -2297,8 +2297,8 @@ class MockData {
       hasVideo: true,
       videoTheme: 'thirsty_crow',
       language: 'Telugu',
-      youtubeVideoId: '_Yp65GIA9vE',
-      youtubeChannel: 'Kiddos Tales Telugu',
+      youtubeVideoId: 'xZTgMyAGl-8',
+      youtubeChannel: 'Kids Cartoon Flix',
       pages: [
         'ఒకానొక వేసవి కాలంలో ఒక కాకికి విపరీతమైన దాహం వేసింది. నీటి కోసం ఎక్కడెక్కడో వెతికింది.',
         'చివరకు ఒక ఇంటి పెరట్లో ఒక నీటి కుండను చూసింది. ఎంతో ఆశతో కుండ పైకి వాలింది.',

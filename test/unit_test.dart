@@ -12,6 +12,9 @@ import 'package:learnwithfun/blocs/quiz_cubit.dart';
 import 'package:learnwithfun/blocs/stories_cubit.dart';
 import 'package:learnwithfun/blocs/mini_game_cubit.dart';
 import 'package:learnwithfun/data/models/match_pair_level.dart';
+import 'package:learnwithfun/core/utils/auth_validators.dart';
+import 'package:learnwithfun/data/repositories/auth_repository.dart';
+import 'package:learnwithfun/blocs/auth_cubit.dart';
 
 void main() {
   setUp(() {
@@ -516,6 +519,138 @@ void main() {
       await Future.delayed(const Duration(milliseconds: 350));
       expect(cubit.state.cards[0].isMatched, true);
       expect(cubit.state.cards[matchIndex].isMatched, true);
+
+      cubit.close();
+    });
+  });
+
+  group('Authentication & User Isolation', () {
+    test('AuthValidators enforces strict Indian phone number format (6,7,8,9 and 10 digits)', () {
+      // Valid phone numbers
+      expect(AuthValidators.validatePhoneNumber('9876543210'), isNull);
+      expect(AuthValidators.validatePhoneNumber('8123456789'), isNull);
+      expect(AuthValidators.validatePhoneNumber('7000000000'), isNull);
+      expect(AuthValidators.validatePhoneNumber('6999999999'), isNull);
+
+      // Invalid starts
+      expect(AuthValidators.validatePhoneNumber('5876543210'), contains('start with 6, 7, 8, or 9'));
+      expect(AuthValidators.validatePhoneNumber('1234567890'), contains('start with 6, 7, 8, or 9'));
+      expect(AuthValidators.validatePhoneNumber('0987654321'), contains('start with 6, 7, 8, or 9'));
+
+      // Invalid length
+      expect(AuthValidators.validatePhoneNumber('98765'), contains('exactly 10 digits'));
+      expect(AuthValidators.validatePhoneNumber('98765432100'), contains('exactly 10 digits'));
+      expect(AuthValidators.validatePhoneNumber(''), contains('enter mobile number'));
+      expect(AuthValidators.validatePhoneNumber('98765abcde'), contains('start with 6, 7, 8, or 9'));
+    });
+
+    test('AuthValidators enforces standard email and password requirements', () {
+      expect(AuthValidators.validateEmail('parent@example.com'), isNull);
+      expect(AuthValidators.validateEmail('test.parent+1@school.org'), isNull);
+      expect(AuthValidators.validateEmail('invalid-email'), contains('valid email'));
+      expect(AuthValidators.validateEmail('test@'), contains('valid email'));
+      expect(AuthValidators.validateEmail(''), contains('enter email'));
+
+      expect(AuthValidators.validatePassword('123456'), isNull);
+      expect(AuthValidators.validatePassword('short'), contains('at least 6 characters'));
+      expect(AuthValidators.validatePassword(''), contains('enter password'));
+
+      expect(AuthValidators.validateConfirmPassword('pass123', 'pass123'), isNull);
+      expect(AuthValidators.validateConfirmPassword('pass123', 'different'), contains('do not match'));
+    });
+
+    test('LocalAuthRepository signs in with demo account and registers new accounts', () async {
+      final storage = LocalStorageService();
+      await storage.init();
+      final authRepo = LocalAuthRepository(storage);
+
+      // Test seed demo login
+      final demoUser = await authRepo.signInWithPhone('9876543210', 'password123');
+      expect(demoUser.name, contains('Parent'));
+      expect(demoUser.phoneNumber, '9876543210');
+      expect(authRepo.currentUser?.id, demoUser.id);
+
+      // Test sign out
+      await authRepo.signOut();
+      expect(authRepo.currentUser, isNull);
+
+      // Test registering new user with phone
+      final newUser = await authRepo.registerWithPhone(
+        name: 'Priya',
+        phoneNumber: '9123456780',
+        password: 'mySecretPassword',
+      );
+      expect(newUser.name, 'Priya');
+      expect(newUser.phoneNumber, '9123456780');
+
+      // Prevent duplicate phone registration
+      expect(
+        () => authRepo.registerWithPhone(
+          name: 'Another',
+          phoneNumber: '9123456780',
+          password: 'pass',
+        ),
+        throwsA(isA<AuthException>()),
+      );
+
+      // Test registering with email
+      final emailUser = await authRepo.registerWithEmail(
+        name: 'Rohan',
+        email: 'rohan@example.com',
+        password: 'rohanPassword',
+      );
+      expect(emailUser.name, 'Rohan');
+      expect(emailUser.email, 'rohan@example.com');
+    });
+
+    test('LocalStorageService isolates progress and levels per user account', () async {
+      final storage = LocalStorageService();
+      await storage.init();
+
+      // Set user 1
+      storage.setScopeUser('user_1');
+      await storage.setQuizUnlockedLevel(5);
+      await storage.setMiniGameLevelStars(1, 3);
+      expect(storage.getQuizUnlockedLevel(), 5);
+      expect(storage.getMiniGameLevelStars(1), 3);
+
+      // Switch to user 2
+      storage.setScopeUser('user_2');
+      expect(storage.getQuizUnlockedLevel(), 1); // Fresh start for user 2!
+      expect(storage.getMiniGameLevelStars(1), 0);
+
+      await storage.setQuizUnlockedLevel(3);
+      expect(storage.getQuizUnlockedLevel(), 3);
+
+      // Switch back to user 1 -> Progress is intact and preserved!
+      storage.setScopeUser('user_1');
+      expect(storage.getQuizUnlockedLevel(), 5);
+      expect(storage.getMiniGameLevelStars(1), 3);
+    });
+
+    test('AuthCubit manages authentication, guest, and logout lifecycle', () async {
+      final storage = LocalStorageService();
+      await storage.init();
+      final authRepo = LocalAuthRepository(storage);
+      final cubit = AuthCubit(authRepo, storage);
+
+      // Check initial checkAuth
+      await cubit.checkAuth();
+      expect(cubit.state, isA<Unauthenticated>());
+
+      // Login as demo
+      await cubit.loginWithPhone('9876543210', 'password123');
+      expect(cubit.state, isA<Authenticated>());
+      final authedState = cubit.state as Authenticated;
+      expect(authedState.user.phoneNumber, '9876543210');
+
+      // Logout
+      await cubit.logout();
+      expect(cubit.state, isA<Unauthenticated>());
+
+      // Continue as guest
+      cubit.continueAsGuest();
+      expect(cubit.state, isA<GuestExplorer>());
 
       cubit.close();
     });

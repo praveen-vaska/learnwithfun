@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/illustrations/kid_scenes.dart';
@@ -10,16 +11,23 @@ import '../../core/widgets/app_button.dart';
 import '../../core/animations/floating_stars.dart';
 import '../../core/animations/fade_slide_in.dart';
 import '../../core/animations/kid_animations.dart';
-import '../onboarding/onboarding_screen.dart';
+import '../../blocs/auth_cubit.dart';
+import '../auth/screens/login_screen.dart';
+import '../main_nav/main_nav_screen.dart';
 
 class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});
 
   void _start(BuildContext context) {
+    final authState = context.read<AuthCubit>().state;
+    final Widget destination = (authState is Authenticated || authState is GuestExplorer)
+        ? const MainNavScreen()
+        : const LoginScreen();
+
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 600),
-        pageBuilder: (context, anim, secAnim) => const OnboardingScreen(),
+        pageBuilder: (context, anim, secAnim) => destination,
         transitionsBuilder: (context, anim, secAnim, child) {
           // Circular "magic portal" reveal from the button area.
           return AnimatedBuilder(

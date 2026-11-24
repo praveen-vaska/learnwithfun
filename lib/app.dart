@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'core/theme/app_theme.dart';
+import 'data/repositories/auth_repository.dart';
 import 'data/repositories/learning_repository.dart';
 import 'data/repositories/user_repository.dart';
 import 'data/services/local_storage_service.dart';
+import 'blocs/auth_cubit.dart';
 import 'blocs/user_cubit.dart';
 import 'blocs/learning_cubit.dart';
 import 'blocs/quiz_cubit.dart';
@@ -22,16 +24,21 @@ class LearnWithFunApp extends StatelessWidget {
   Widget build(BuildContext context) {
     // Local repositories connected to persistent local backend
     final storage = storageService ?? LocalStorageService();
+    final authRepository = LocalAuthRepository();
     final userRepository = MockUserRepository(storage);
     final learningRepository = MockLearningRepository(storage);
 
     return MultiRepositoryProvider(
       providers: [
+        RepositoryProvider<AuthRepository>.value(value: authRepository),
         RepositoryProvider<UserRepository>.value(value: userRepository),
         RepositoryProvider<LearningRepository>.value(value: learningRepository),
       ],
       child: MultiBlocProvider(
         providers: [
+          BlocProvider<AuthCubit>(
+            create: (_) => AuthCubit(authRepository, storage)..checkAuthStatus(),
+          ),
           BlocProvider<UserCubit>(create: (_) => UserCubit(userRepository)),
           BlocProvider<LearningCubit>(
             create: (_) => LearningCubit(learningRepository),

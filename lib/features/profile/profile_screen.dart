@@ -7,6 +7,8 @@ import '../../core/widgets/app_card.dart';
 import '../../core/widgets/app_vector_graphic.dart';
 import '../../core/animations/fade_slide_in.dart';
 import '../../blocs/user_cubit.dart';
+import '../../blocs/auth_cubit.dart';
+import '../auth/screens/login_screen.dart';
 import 'learning_progress_screen.dart';
 import '../onboarding/choose_avatar_screen.dart';
 import '../rewards/rewards_screen.dart';
@@ -113,9 +115,16 @@ class ProfileScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
 
-              // 2. Profile Options List
+              // 2. Parent Account Info Card
+              FadeSlideIn(
+                delay: const Duration(milliseconds: 150),
+                child: _buildAccountCard(context),
+              ),
+              const SizedBox(height: 16),
+
+              // 3. Profile Options List
               FadeSlideIn(
                 delay: const Duration(milliseconds: 200),
                 child: Column(
@@ -204,6 +213,16 @@ class ProfileScreen extends StatelessWidget {
                         );
                       },
                     ),
+                    if (context.watch<AuthCubit>().state is Authenticated) ...[
+                      const SizedBox(height: 12),
+                      _buildOptionItem(
+                        icon: Icons.logout_rounded,
+                        iconColor: AppColors.pinkDark,
+                        title: 'Log Out / Switch Account',
+                        subtitle: 'Safely sign out or switch accounts',
+                        onTap: () => _showLogoutDialog(context),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -211,6 +230,156 @@ class ProfileScreen extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildAccountCard(BuildContext context) {
+    final authState = context.watch<AuthCubit>().state;
+    final isAuthenticated = authState is Authenticated;
+    final user = isAuthenticated ? authState.user : null;
+
+    return AppCard(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: isAuthenticated
+                  ? AppColors.softPurple
+                  : AppColors.background,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              isAuthenticated
+                  ? Icons.verified_user_rounded
+                  : Icons.account_circle_outlined,
+              color: isAuthenticated
+                  ? AppColors.primaryPurple
+                  : AppColors.textMedium,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      isAuthenticated ? (user!.name) : 'Guest Explorer',
+                      style: AppTextStyles.heading3().copyWith(fontSize: 15),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isAuthenticated
+                            ? const Color(0xFFE8F5E9)
+                            : const Color(0xFFFFF3E0),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        isAuthenticated ? 'Parent Account' : 'Guest',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: isAuthenticated
+                              ? AppColors.green
+                              : const Color(0xFFE65100),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  isAuthenticated
+                      ? (user!.phoneNumber != null
+                          ? '📱 +91 ${user.phoneNumber}'
+                          : '✉️ ${user.email}')
+                      : 'Sign in to save and sync progress',
+                  style: AppTextStyles.bodySmall(color: AppColors.textMedium),
+                ),
+              ],
+            ),
+          ),
+          if (!isAuthenticated)
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                );
+              },
+              child: const Text('Sign In'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _showLogoutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: const BoxDecoration(
+                color: Color(0xFFFFEBEE),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.logout_rounded,
+                color: AppColors.pinkDark,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Text(
+              'Log Out?',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Your child’s learning stars and progress are safely saved to your account. You can log back in anytime.',
+          style: TextStyle(fontSize: 14, color: AppColors.textDark),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppColors.textMedium),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              context.read<AuthCubit>().logout();
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                (route) => false,
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.pinkDark,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text('Log Out'),
+          ),
+        ],
       ),
     );
   }

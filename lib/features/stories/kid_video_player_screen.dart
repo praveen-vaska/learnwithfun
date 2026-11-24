@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 
@@ -37,6 +38,7 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
   bool _isLoading = true;
   bool _isBuffering = false;
   bool _hasError = false;
+  String _errorMessage = '';
   bool _isPlaying = true;
   bool _isFullscreen = false;
   Timer? _controlsTimer;
@@ -62,6 +64,21 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
     _initWebViewController();
   }
 
+  Future<void> _launchYouTubeExternal([String? customUrl]) async {
+    final videoId = _currentStory.youtubeVideoId ?? 'yCjJyiqpAuU';
+    final targetUrl = customUrl != null && customUrl.isNotEmpty
+        ? customUrl
+        : 'https://www.youtube.com/watch?v=$videoId';
+    final uri = Uri.parse(targetUrl);
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      debugPrint('Error launching external YouTube app: $e');
+    }
+  }
+
   void _initWebViewController() {
     if (!_isWebViewSupported) return;
 
@@ -70,28 +87,30 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
       controller = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
         ..setBackgroundColor(Colors.black)
-        ..setUserAgent(
-          'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-        )
         ..setNavigationDelegate(
           NavigationDelegate(
             onPageFinished: (_) {
               if (mounted) {
                 setState(() {
                   _isLoading = false;
-                  _hasError = false;
                 });
+                _injectVideoCleanScript();
               }
             },
             onNavigationRequest: (NavigationRequest request) {
               final url = request.url.toLowerCase();
-              if (url.startsWith('https://www.youtube.com/watch') ||
-                  url.startsWith('https://m.youtube.com/watch') ||
-                  url.contains('/channel/') ||
-                  url.contains('/user/')) {
+              if (url.contains('watch?v=') || url.contains('youtu.be/')) {
+                _launchYouTubeExternal(request.url);
                 return NavigationDecision.prevent;
               }
-              return NavigationDecision.navigate;
+              if (url.contains('/embed/') ||
+                  url.contains('googlevideo.com') ||
+                  url.contains('youtube.com') ||
+                  url.contains('youtube-nocookie.com') ||
+                  url.contains('learnwithfun.kids')) {
+                return NavigationDecision.navigate;
+              }
+              return NavigationDecision.prevent;
             },
             onWebResourceError: (error) {
               debugPrint(
@@ -105,6 +124,7 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
                   setState(() {
                     _isLoading = false;
                     _hasError = true;
+                    _errorMessage = error.description;
                   });
                 }
               }
@@ -176,6 +196,16 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
             if (duration > 0) _totalDuration = duration;
           });
         }
+      } else if (type == 'ERROR_SCREEN') {
+        final msg = payload['message'] as String? ?? '';
+        debugPrint('YouTube error screen detected in DOM: $msg');
+        if (mounted) {
+          setState(() {
+            _hasError = true;
+            _isLoading = false;
+            _errorMessage = msg;
+          });
+        }
       } else if (type == 'ERROR') {
         final code = payload['code'];
         debugPrint('YouTube player error event: $code');
@@ -184,6 +214,7 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
             setState(() {
               _hasError = true;
               _isLoading = false;
+              _errorMessage = 'Playback error (Code $code)';
             });
           }
         }
@@ -193,147 +224,92 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
     }
   }
 
-  String _buildPlayerHtml(String videoId) {
-    return '''
-<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="referrer" content="strict-origin-when-cross-origin">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body {
-      width: 100%;
-      height: 100%;
-      background: #000;
-      overflow: hidden;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    #player-container {
-      position: relative;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: #000;
-    }
-    #player {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-    }
-  </style>
-</head>
-<body>
-  <div id="player-container">
-    <div id="player"></div>
-  </div>
-  <script>
-    var tag = document.createElement('script');
-    tag.src = "https://www.youtube.com/iframe_api";
-    var firstScriptTag = document.getElementsByTagName('script')[0];
-    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-
-    var player = null;
-
-    function onYouTubeIframeAPIReady() {
-      player = new YT.Player('player', {
-        height: '100%',
-        width: '100%',
-        videoId: '$videoId',
-        host: 'https://www.youtube.com',
-        playerVars: {
-          'autoplay': 1,
-          'playsinline': 1,
-          'controls': 0,
-          'rel': 0,
-          'modestbranding': 1,
-          'iv_load_policy': 3,
-          'disablekb': 1,
-          'fs': 0,
-          'origin': 'https://com.learnwithfun.learnwithfun',
-          'widget_referrer': 'https://com.learnwithfun.learnwithfun'
-        },
-        events: {
-          'onReady': onPlayerReady,
-          'onStateChange': onPlayerStateChange,
-          'onError': onPlayerError
+  void _injectVideoCleanScript() {
+    if (_webViewController == null) return;
+    const script = '''
+      (function() {
+        var style = document.getElementById('kid-clean-style');
+        if (!style) {
+          style = document.createElement('style');
+          style.id = 'kid-clean-style';
+          style.innerHTML = `
+            .ytp-chrome-top, 
+            .ytp-chrome-bottom, 
+            .ytp-show-cards-title, 
+            .ytp-pause-overlay, 
+            .ytp-scroll-min, 
+            .ytp-watermark,
+            .ytp-youtube-button,
+            .ytp-title,
+            .ytp-share-button,
+            .ytp-more-videos-view,
+            .ytp-contextmenu {
+              display: none !important;
+            }
+          `;
+          document.head.appendChild(style);
         }
-      });
-    }
 
-    function notifyFlutter(type, data) {
-      try {
-        if (window.KidVideoBridge) {
-          window.KidVideoBridge.postMessage(JSON.stringify({ type: type, data: data }));
+        function checkErrors() {
+          var err = document.querySelector('.ytp-error, .player-error-screen, .ytp-error-content, .ytp-chrome-top-buttons');
+          if (err && err.innerText && err.innerText.trim().length > 0) {
+            var text = err.innerText.trim();
+            if (text.includes('unavailable') || text.includes('152') || text.includes('disabled') || text.includes('Error')) {
+              if (window.KidVideoBridge) {
+                window.KidVideoBridge.postMessage(JSON.stringify({
+                  type: 'ERROR_SCREEN',
+                  data: { message: text }
+                }));
+              }
+            }
+          }
         }
-      } catch (e) {}
-    }
+        setInterval(checkErrors, 1000);
 
-    function onPlayerReady(event) {
-      try {
-        event.target.playVideo();
-        var dur = event.target.getDuration() || 0;
-        if (dur > 0) notifyFlutter('TIME_UPDATE', { current: 0, duration: dur });
-      } catch (e) {}
-      notifyFlutter('READY', {});
-    }
-
-    var timeInterval = setInterval(function() {
-      try {
-        if (player && player.getCurrentTime && player.getDuration) {
-          var cur = player.getCurrentTime() || 0;
-          var dur = player.getDuration() || 0;
-          notifyFlutter('TIME_UPDATE', { current: cur, duration: dur });
+        function setupVideoListener() {
+          var v = document.querySelector('video');
+          if (v) {
+            v.play().catch(function() {});
+            v.ontimeupdate = function() {
+              if (window.KidVideoBridge) {
+                window.KidVideoBridge.postMessage(JSON.stringify({
+                  type: 'TIME_UPDATE',
+                  data: { current: v.currentTime, duration: v.duration || 0 }
+                }));
+              }
+            };
+            v.onended = function() {
+              if (window.KidVideoBridge) {
+                window.KidVideoBridge.postMessage(JSON.stringify({
+                  type: 'STATE_CHANGE',
+                  data: { state: 'ENDED' }
+                }));
+              }
+            };
+            v.onplay = function() {
+              if (window.KidVideoBridge) {
+                window.KidVideoBridge.postMessage(JSON.stringify({
+                  type: 'STATE_CHANGE',
+                  data: { state: 'PLAYING' }
+                }));
+              }
+            };
+            v.onpause = function() {
+              if (window.KidVideoBridge) {
+                window.KidVideoBridge.postMessage(JSON.stringify({
+                  type: 'STATE_CHANGE',
+                  data: { state: 'PAUSED' }
+                }));
+              }
+            };
+          } else {
+            setTimeout(setupVideoListener, 300);
+          }
         }
-      } catch (e) {}
-    }, 500);
-
-    function onPlayerStateChange(event) {
-      var stateMap = { '-1': 'UNSTARTED', '0': 'ENDED', '1': 'PLAYING', '2': 'PAUSED', '3': 'BUFFERING', '5': 'CUED' };
-      var stateName = stateMap[event.data] || 'UNKNOWN';
-      notifyFlutter('STATE_CHANGE', { state: stateName });
-    }
-
-    function onPlayerError(event) {
-      notifyFlutter('ERROR', { code: event.data });
-    }
-
-    function playerPlay() {
-      if (player && player.playVideo) player.playVideo();
-    }
-
-    function playerPause() {
-      if (player && player.pauseVideo) player.pauseVideo();
-    }
-
-    function playerSeekTo(seconds) {
-      if (player && player.seekTo) {
-        player.seekTo(seconds, true);
-      }
-    }
-
-    function playerSeekRelative(delta) {
-      if (player && player.getCurrentTime && player.seekTo) {
-        var nextTime = Math.max(0, (player.getCurrentTime() || 0) + delta);
-        player.seekTo(nextTime, true);
-      }
-    }
-
-    function playerReplay() {
-      if (player && player.seekTo && player.playVideo) {
-        player.seekTo(0, true);
-        player.playVideo();
-      }
-    }
-  </script>
-</body>
-</html>
-''';
+        setupVideoListener();
+      })();
+    ''';
+    _webViewController!.runJavaScript(script);
   }
 
   void _loadVideo(String videoId) {
@@ -341,6 +317,7 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
     setState(() {
       _isLoading = true;
       _hasError = false;
+      _errorMessage = '';
       _isPlaying = true;
       _isBuffering = false;
       _currentTime = 0.0;
@@ -348,9 +325,14 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
       _isDraggingSlider = false;
     });
 
-    _webViewController!.loadHtmlString(
-      _buildPlayerHtml(videoId),
-      baseUrl: 'https://com.learnwithfun.learnwithfun',
+    final embedUrl = Uri.parse(
+      'https://www.youtube.com/embed/$videoId?autoplay=1&playsinline=1&controls=0&rel=0&modestbranding=1&enablejsapi=1&iv_load_policy=3&fs=0&disablekb=1&origin=https://learnwithfun.kids',
+    );
+    _webViewController!.loadRequest(
+      embedUrl,
+      headers: const {
+        'Referer': 'https://learnwithfun.kids/',
+      },
     );
   }
 
@@ -385,20 +367,28 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
   }
 
   void _seekTo(double seconds) {
-    _webViewController?.runJavaScript('playerSeekTo($seconds);');
+    _webViewController?.runJavaScript(
+      "var v = document.querySelector('video'); if (v) v.currentTime = $seconds;",
+    );
   }
 
   void _seekRelative(int seconds) {
-    _webViewController?.runJavaScript('playerSeekRelative($seconds);');
+    _webViewController?.runJavaScript(
+      "var v = document.querySelector('video'); if (v) v.currentTime = Math.max(0, v.currentTime + $seconds);",
+    );
   }
 
   void _togglePlayPause() {
     if (_webViewController == null) return;
     if (_isPlaying) {
-      _webViewController!.runJavaScript('playerPause();');
+      _webViewController!.runJavaScript(
+        "var v = document.querySelector('video'); if (v) v.pause();",
+      );
       setState(() => _isPlaying = false);
     } else {
-      _webViewController!.runJavaScript('playerPlay();');
+      _webViewController!.runJavaScript(
+        "var v = document.querySelector('video'); if (v) v.play();",
+      );
       setState(() => _isPlaying = true);
     }
   }
@@ -503,7 +493,9 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
   }
 
   void _replayVideo() {
-    _webViewController?.runJavaScript('playerReplay();');
+    _webViewController?.runJavaScript(
+      "var v = document.querySelector('video'); if (v) { v.currentTime = 0; v.play(); }",
+    );
     setState(() => _isPlaying = true);
     _confettiKey.currentState?.play();
   }
@@ -523,49 +515,58 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
         backgroundColor: _isFullscreen ? Colors.black : AppColors.background,
         body: ConfettiCelebration(
           key: _confettiKey,
-          child: _isFullscreen
-              ? _buildFullscreenLayout(context, videoId)
-              : _buildPortraitLayout(context, videoId),
-        ),
-      ),
-    );
-  }
+          child: SafeArea(
+            top: !_isFullscreen,
+            bottom: !_isFullscreen,
+            left: false,
+            right: false,
+            child: Column(
+              children: [
+                // 1. Top Bar (Only visible in Portrait mode)
+                if (!_isFullscreen) _buildTopBar(context),
 
-  Widget _buildFullscreenLayout(BuildContext context, String videoId) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        // 1. Centered 16:9 full video stage (never unmounted!)
-        Center(
-          child: AspectRatio(
-            aspectRatio: 16 / 9,
-            child: _buildVideoPlayerSurface(videoId, showCornerToggle: false),
-          ),
-        ),
+                // 2. Video Stage: Sits in the EXACT SAME place in the widget tree across portrait & landscape!
+                // This ensures the native Android WebView SurfaceView is NEVER destroyed or reparented.
+                Expanded(
+                  flex: _isFullscreen ? 1 : 0,
+                  child: Container(
+                    width: double.infinity,
+                    margin: _isFullscreen
+                        ? EdgeInsets.zero
+                        : const EdgeInsets.fromLTRB(16, 2, 16, 10),
+                    decoration: _isFullscreen
+                        ? const BoxDecoration(color: Colors.black)
+                        : BoxDecoration(
+                            color: Colors.black,
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: AppColors.shadow,
+                                blurRadius: 16,
+                                offset: Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                    clipBehavior: _isFullscreen ? Clip.none : Clip.antiAlias,
+                    child: Center(
+                      child: AspectRatio(
+                        aspectRatio: 16 / 9,
+                        child: _buildVideoPlayerSurface(videoId),
+                      ),
+                    ),
+                  ),
+                ),
 
-        // 2. Fullscreen Tap Detector Layer (always intercepts taps above native PlatformView)
-        Positioned.fill(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _toggleControlsVisibility,
-            child: const SizedBox.expand(),
-          ),
-        ),
-
-        // 3. Fullscreen Animated Navigation & Scrubber Overlay (Tap screen to show/hide)
-        AnimatedOpacity(
-          opacity: _showFullscreenControls ? 1.0 : 0.0,
-          duration: const Duration(milliseconds: 250),
-          child: IgnorePointer(
-            ignoring: !_showFullscreenControls,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _toggleControlsVisibility,
-              child: _buildFullscreenControlsOverlay(),
+                // 3. Scrollable Portrait Content (Only visible in Portrait mode)
+                if (!_isFullscreen)
+                  Expanded(
+                    child: _buildPortraitContent(context),
+                  ),
+              ],
             ),
           ),
         ),
-      ],
+      ),
     );
   }
 
@@ -574,21 +575,24 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
     final maxDuration = _totalDuration > 0 ? _totalDuration : 1.0;
     final currentSliderVal = effectiveTime.clamp(0.0, maxDuration);
 
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.black.withOpacity(0.75),
-            Colors.black.withOpacity(0.15),
-            Colors.black.withOpacity(0.15),
-            Colors.black.withOpacity(0.85),
-          ],
-          stops: const [0.0, 0.25, 0.70, 1.0],
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _toggleControlsVisibility,
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.black.withOpacity(0.75),
+              Colors.black.withOpacity(0.15),
+              Colors.black.withOpacity(0.15),
+              Colors.black.withOpacity(0.85),
+            ],
+            stops: const [0.0, 0.25, 0.70, 1.0],
+          ),
         ),
-      ),
-      child: SafeArea(
+        child: SafeArea(
         child: Column(
           children: [
             // Top Bar: Back to Portrait, Title, and Replay
@@ -845,54 +849,23 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
-  Widget _buildPortraitLayout(BuildContext context, String videoId) {
+  Widget _buildPortraitContent(BuildContext context) {
     final channelName = _currentStory.youtubeChannel ?? 'LearnWithFun';
     final storiesState = context.watch<StoriesCubit>().state;
     final otherVideos = storiesState.stories
         .where((s) => s.id != _currentStory.id && s.hasVideo)
         .toList();
 
-    return SafeArea(
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. Solid Kid-Friendly Top Navigation Bar
-          _buildTopBar(context),
-
-          // 2. High-Definition 16:9 Video Player Stage (Completely clean video!)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
-                child: Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: Colors.black,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: AppColors.shadow,
-                        blurRadius: 16,
-                        offset: Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: AspectRatio(
-                    aspectRatio: 16 / 9,
-                    child: _buildVideoPlayerSurface(videoId),
-                  ),
-                ),
-              ),
-
-              // 3. Scrollable Below Stage: All Kid-Friendly Navigation Controls, Metadata, Lyrics, & Other Songs
-              Expanded(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
                       // Kid-Friendly Navigation & Player Control Bar
                       AppCard(
                         padding: const EdgeInsets.all(14),
@@ -946,6 +919,52 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
                                             Icons.check_circle_rounded,
                                             size: 14,
                                             color: AppColors.primaryPurple,
+                                          ),
+                                          const Spacer(),
+                                          InkWell(
+                                            onTap: () => _launchYouTubeExternal(),
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 4,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.red.withOpacity(
+                                                  0.08,
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                                border: Border.all(
+                                                  color: Colors.red.withOpacity(
+                                                    0.3,
+                                                  ),
+                                                  width: 1,
+                                                ),
+                                              ),
+                                              child: const Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(
+                                                    Icons.play_arrow_rounded,
+                                                    color: Colors.red,
+                                                    size: 16,
+                                                  ),
+                                                  SizedBox(width: 2),
+                                                  Text(
+                                                    'YouTube 📺',
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: Colors.red,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -1201,11 +1220,7 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
                       ],
                     ],
                   ),
-                ),
-              ),
-            ],
-          ),
-        );
+                );
   }
 
   Widget _buildVideoPlayerSurface(
@@ -1215,7 +1230,7 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // 1. YouTube WebView
+        // 1. YouTube WebView (stays permanently mounted in the same tree branch)
         if (_isWebViewSupported && _webViewController != null)
           WebViewWidget(
             key: _webViewKey,
@@ -1224,16 +1239,27 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
         else
           _buildVideoThumbnailFallback(videoId),
 
-        // 2. Portrait Mode Tap Layer (Tapping video cleanly toggles play/pause)
-        if (!_isFullscreen)
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: _togglePlayPause,
+        // 2. Full Surface Tap Detector Layer
+        // In Portrait: Tapping video toggles play/pause cleanly
+        // In Fullscreen: Tapping video toggles the full navigation overlay on/off
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              if (_isFullscreen) {
+                _toggleControlsVisibility();
+              } else {
+                _togglePlayPause();
+              }
+            },
+            child: const ColoredBox(
+              color: Colors.transparent,
+              child: SizedBox.expand(),
             ),
           ),
+        ),
 
-        // 2. Loading / Buffering / Error Overlays
+        // 3. Loading / Buffering / Error Overlays
         if (_hasError)
           _buildErrorFallback(videoId)
         else if (_isLoading)
@@ -1246,8 +1272,8 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
             ),
           ),
 
-        // 3. Corner Fullscreen Button (clean, minimal, does not obstruct video)
-        if (showCornerToggle)
+        // 4. Portrait Corner Fullscreen Toggle Button (bottom-right)
+        if (!_isFullscreen && showCornerToggle)
           Positioned(
             right: 10,
             bottom: 10,
@@ -1262,15 +1288,24 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
                     color: Colors.black.withOpacity(0.55),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(
-                    _isFullscreen
-                        ? Icons.fullscreen_exit_rounded
-                        : Icons.fullscreen_rounded,
+                  child: const Icon(
+                    Icons.fullscreen_rounded,
                     color: Colors.white,
                     size: 20,
                   ),
                 ),
               ),
+            ),
+          ),
+
+        // 5. Fullscreen Navigation & Scrubber Overlay (Tap screen to show/hide)
+        if (_isFullscreen)
+          AnimatedOpacity(
+            opacity: _showFullscreenControls ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 250),
+            child: IgnorePointer(
+              ignoring: !_showFullscreenControls,
+              child: _buildFullscreenControlsOverlay(),
             ),
           ),
       ],
@@ -1330,6 +1365,50 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
                 fontSize: 11,
                 fontWeight: FontWeight.bold,
                 color: AppColors.primaryPurple,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: _toggleFullscreen,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryPurple,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: AppColors.shadow,
+                      blurRadius: 4,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.fullscreen_rounded,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                    SizedBox(width: 4),
+                    Text(
+                      'Fullscreen',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -1437,34 +1516,101 @@ class _KidVideoPlayerScreenState extends State<KidVideoPlayerScreen> {
   }
 
   Widget _buildErrorFallback(String videoId) {
+    final is152 = _errorMessage.contains('152') || _errorMessage.contains('ad');
+    final isOwnerDisabled =
+        _errorMessage.contains('disabled by the video owner') ||
+        _errorMessage.contains('150') ||
+        _errorMessage.contains('101');
+
     return Container(
       color: Colors.black87,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.wifi_off_rounded, color: Colors.white70, size: 40),
-            const SizedBox(height: 8),
-            const Text(
-              'Could not load video. Please check your internet.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white, fontSize: 13),
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton.icon(
-              onPressed: () => _loadVideo(videoId),
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: const Text('Retry'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primaryPurple,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryPurple.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.smart_display_rounded,
+                  color: AppColors.primaryPurple,
+                  size: 36,
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 12),
+              Text(
+                is152
+                    ? 'Private DNS / Ad-Blocker Alert'
+                    : (isOwnerDisabled
+                        ? 'Playback Restricted by Owner'
+                        : 'Video Unavailable in Embed'),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                is152
+                    ? 'If your phone uses AdGuard Private DNS, YouTube embed checks may be blocked. You can turn off Private DNS in phone settings or watch directly on YouTube.'
+                    : (isOwnerDisabled
+                        ? 'The channel owner has disabled in-app embedding for this video. You can still watch it directly on YouTube!'
+                        : 'You can watch this rhyme safely on YouTube or try refreshing.'),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.85),
+                  fontSize: 12,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: () => _launchYouTubeExternal(),
+                    icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                    label: const Text('Watch on YouTube'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.redAccent,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  OutlinedButton.icon(
+                    onPressed: () => _loadVideo(videoId),
+                    icon: const Icon(Icons.refresh_rounded, size: 16),
+                    label: const Text('Retry'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: Colors.white54),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
