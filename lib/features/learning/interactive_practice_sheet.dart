@@ -16,14 +16,15 @@ import 'tracing_guide.dart';
 
 /// Interactive Practice Sheet for Kids (Duolingo Style)
 /// Features:
-/// 1. 2-Step Voice Practice:
-///    - Step 1: Say the Letter/Symbol (e.g., "Say: A!")
+/// 1. 2-Step Voice Practice with Automatic Speech Matching:
+///    - Step 1: Say the Letter/Symbol (e.g., "Say: A!") -> Matches strictly ("A"), rejects ("B")
 ///    - Step 2: Say the Word Association (e.g., "Now say: A for Apple!")
-/// 2. 2-Step Accurate Trace & Draw:
+///    - Automatically checks and advances immediately when speech matches!
+/// 2. 2-Step Accurate Trace & Draw with Automatic Completion:
 ///    - Step 1: Trace the Letter/Symbol ('A')
-///    - Step 2: Trace the Word ('APPLE')
-///    - Real-time stencil checkpoint hit-testing (dots light up green when traced accurately!)
-///    - Stroke coverage validation (requires >=60% accuracy on the stencil lines)
+///    - Step 2: Trace the Word ('APPLE') with wide gaps between letters
+///    - Live checkpoint hit detection (dots light up glowing green as traced)
+///    - Automatically checks & advances as soon as accurate tracing threshold (>=60%) is met!
 class InteractivePracticeSheet extends StatefulWidget {
   final Lesson lesson;
 
@@ -82,6 +83,49 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
     AppColors.pinkDark,
   ];
 
+  // Phonetic & common transcription variants for English letters
+  static const Map<String, List<String>> _letterPhonetics = {
+    'A': ['a', 'ay', 'ei', 'eh', 'hey', 'letter a', 'apple'],
+    'B': ['b', 'be', 'bee', 'letter b', 'ball', 'boy'],
+    'C': ['c', 'see', 'sea', 'si', 'letter c', 'cat'],
+    'D': ['d', 'dee', 'the', 'letter d', 'dog'],
+    'E': ['e', 'ee', 'letter e', 'elephant', 'egg'],
+    'F': ['f', 'ef', 'eff', 'letter f', 'fish'],
+    'G': ['g', 'jee', 'gee', 'letter g', 'grapes'],
+    'H': ['h', 'aitch', 'eitch', 'letter h', 'hat', 'horse'],
+    'I': ['i', 'eye', 'ai', 'ay', 'letter i', 'ice cream', 'ice'],
+    'J': ['j', 'jay', 'letter j', 'jug', 'juice'],
+    'K': ['k', 'kay', 'letter k', 'kite'],
+    'L': ['l', 'el', 'ell', 'letter l', 'lion'],
+    'M': ['m', 'em', 'letter m', 'mango', 'monkey'],
+    'N': ['n', 'en', 'letter n', 'nest', 'nose'],
+    'O': ['o', 'oh', 'letter o', 'orange', 'owl'],
+    'P': ['p', 'pee', 'letter p', 'parrot', 'pen'],
+    'Q': ['q', 'cue', 'kew', 'letter q', 'queen'],
+    'R': ['r', 'ar', 'are', 'letter r', 'rabbit', 'rose'],
+    'S': ['s', 'es', 'ess', 'letter s', 'sun', 'star'],
+    'T': ['t', 'tee', 'tea', 'letter t', 'tiger', 'tree'],
+    'U': ['u', 'you', 'yu', 'letter u', 'umbrella'],
+    'V': ['v', 'vee', 'letter v', 'van', 'violin'],
+    'W': ['w', 'double u', 'double you', 'letter w', 'watch'],
+    'X': ['x', 'ex', 'letter x', 'xylophone'],
+    'Y': ['y', 'why', 'wai', 'letter y', 'yak', 'yellow'],
+    'Z': ['z', 'zed', 'zee', 'letter z', 'zebra', 'zoo'],
+  };
+
+  static const Map<String, List<String>> _numberPhonetics = {
+    '1': ['1', 'one', 'won', 'first', 'number 1', 'number one'],
+    '2': ['2', 'two', 'to', 'too', 'second', 'number 2', 'number two'],
+    '3': ['3', 'three', 'tree', 'third', 'number 3', 'number three'],
+    '4': ['4', 'four', 'for', 'fore', 'number 4', 'number four'],
+    '5': ['5', 'five', 'number 5', 'number five'],
+    '6': ['6', 'six', 'number 6', 'number six'],
+    '7': ['7', 'seven', 'number 7', 'number seven'],
+    '8': ['8', 'eight', 'ate', 'number 8', 'number eight'],
+    '9': ['9', 'nine', 'number 9', 'number nine'],
+    '10': ['10', 'ten', 'number 10', 'number ten'],
+  };
+
   @override
   void initState() {
     super.initState();
@@ -109,11 +153,11 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
     if (widget.lesson.categoryId == 'abc') {
       return title.split(' ').first.trim().toUpperCase();
     }
-    if (title.startsWith('Letter ')) {
-      return title.replaceAll('Letter ', '').trim();
-    }
     if (title.startsWith('Number ')) {
       return title.replaceAll('Number ', '').trim();
+    }
+    if (title.startsWith('Letter ')) {
+      return title.replaceAll('Letter ', '').trim();
     }
     if (widget.lesson.categoryId == 'animals') {
       return widget.lesson.title;
@@ -134,7 +178,6 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
           ? widget.lesson.conceptWord
           : 'One';
     } else if (widget.lesson.categoryId == 'animals') {
-      // Return sound (e.g., 'Moo', 'Roar') or animal sound text
       final sound = widget.lesson.soundText;
       if (sound.contains('says ')) {
         return sound.split('says ').last.replaceAll('!', '').trim();
@@ -187,7 +230,7 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
   }
 
   // -------------------------------------------------------------
-  // SPEECH RECOGNITION (Voice Practice)
+  // SPEECH RECOGNITION (Voice Practice with Automatic Matching)
   // -------------------------------------------------------------
   Future<void> _initSpeechRecognizer() async {
     if (kIsWeb) return;
@@ -272,28 +315,58 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
     }
   }
 
-  void _evaluateSpeech(String words) {
-    final lower = words.toLowerCase().trim();
+  /// Evaluates speech strictly and triggers automatic success when matched
+  void _evaluateSpeech(String rawWords) {
+    final lower = rawWords.toLowerCase().trim();
+    if (lower.isEmpty) return;
 
     if (_voiceStage == 1) {
-      final target = _stage1Symbol.toLowerCase().trim();
-      // Match letter or short symbol
-      final isMatch = lower.contains(target) ||
-          lower.startsWith(target) ||
-          lower.isNotEmpty;
+      final symbol = _stage1Symbol.toUpperCase();
+      bool isMatch = false;
 
-      if (isMatch && !_voiceStage1Success) {
-        _onVoiceSuccess(words);
+      if (widget.lesson.categoryId == 'abc') {
+        // Alphabet matching: check exact letter or phonetic variants
+        final validVariants = _letterPhonetics[symbol] ?? [symbol.toLowerCase()];
+        final tokens = lower.split(RegExp(r'[\s,\.\!\?]+'));
+        isMatch = validVariants.any((v) => lower == v || tokens.contains(v));
+      } else if (widget.lesson.categoryId == '123') {
+        // Number matching
+        final validVariants = _numberPhonetics[symbol] ?? [symbol.toLowerCase()];
+        final tokens = lower.split(RegExp(r'[\s,\.\!\?]+'));
+        isMatch = validVariants.any((v) => lower == v || tokens.contains(v));
+      } else {
+        // Words (animals, shapes, etc.)
+        final target = _stage1Symbol.toLowerCase();
+        isMatch = lower.contains(target);
+      }
+
+      if (isMatch) {
+        if (!_voiceStage1Success) {
+          _onVoiceSuccess(rawWords);
+        }
+      } else {
+        // Give helpful live prompt if speech was heard but did not match
+        setState(() {
+          _voiceFeedback = 'Heard "$rawWords". Try saying "$_stage1Symbol"! 🎙️';
+        });
       }
     } else {
-      final letter = _stage1Symbol.toLowerCase().trim();
-      final word = _stage2Word.toLowerCase().trim();
-      final isMatch = lower.contains(word) ||
-          (lower.contains(letter) && lower.contains('for')) ||
-          lower.length >= 2;
+      // Stage 2: Association (e.g. "Apple" or "A for Apple")
+      final word = _stage2Word.toLowerCase();
+      final letter = _stage1Symbol.toLowerCase();
 
-      if (isMatch && !_voiceStage2Success) {
-        _onVoiceSuccess(words);
+      final isMatch = lower.contains(word) ||
+          (lower.contains(letter) && (lower.contains('for') || lower.contains('is')));
+
+      if (isMatch) {
+        if (!_voiceStage2Success) {
+          _onVoiceSuccess(rawWords);
+        }
+      } else {
+        setState(() {
+          _voiceFeedback =
+              'Heard "$rawWords". Try saying "$_stage1Symbol for $_stage2Word"! 🎙️';
+        });
       }
     }
   }
@@ -333,7 +406,7 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
   }
 
   // -------------------------------------------------------------
-  // TRACING & DRAWING (Canvas Practice)
+  // TRACING & DRAWING (Canvas with Automatic Hit-Checking)
   // -------------------------------------------------------------
   void _onPanStart(DragStartDetails details, RenderBox box) {
     final localPosition = box.globalToLocal(details.globalPosition);
@@ -358,6 +431,43 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
     }
   }
 
+  /// When child lifts their finger, check if they hit the target accuracy
+  /// and automatically complete!
+  void _onPanEnd(Size canvasSize) {
+    final target = _currentDrawTarget;
+    final marginX = canvasSize.width * 0.08;
+    final marginY = canvasSize.height * 0.10;
+    final bounds = Rect.fromLTWH(
+      marginX,
+      marginY,
+      canvasSize.width - (marginX * 2),
+      canvasSize.height - (marginY * 2),
+    );
+
+    final paths = TracingGuide.getScaledPaths(target, bounds);
+    final checkpoints = TracingGuide.extractCheckpoints(paths);
+
+    final strokePoints = _activeStrokes
+        .where((s) => !s.isEraser)
+        .map((s) => s.points)
+        .toList();
+
+    final eval = TracingGuide.evaluateTracing(
+      checkpoints: checkpoints,
+      userStrokes: strokePoints,
+      hitRadius: 44.0,
+    );
+
+    // If child met the accuracy requirement, automatically trigger success!
+    if (eval.isSuccess) {
+      final alreadyDone = (_drawStage == 1 && _drawStage1Success) ||
+          (_drawStage == 2 && _drawStage2Success);
+      if (!alreadyDone) {
+        _handleTracingSuccess(target);
+      }
+    }
+  }
+
   void _clearCanvas() {
     AppAudioService.instance.playTapSound();
     setState(() {
@@ -379,13 +489,12 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
     }
   }
 
-  void _checkDrawing(Size canvasSize) {
+  void _checkDrawingManual(Size canvasSize) {
     AppAudioService.instance.playTapSound();
 
     final target = _currentDrawTarget;
-    // Calculate stencil bounds with padding
-    final marginX = canvasSize.width * 0.12;
-    final marginY = canvasSize.height * 0.12;
+    final marginX = canvasSize.width * 0.08;
+    final marginY = canvasSize.height * 0.10;
     final bounds = Rect.fromLTWH(
       marginX,
       marginY,
@@ -404,7 +513,7 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
     final eval = TracingGuide.evaluateTracing(
       checkpoints: checkpoints,
       userStrokes: strokePoints,
-      hitRadius: 42.0, // Child-friendly hit radius
+      hitRadius: 44.0,
     );
 
     if (eval.totalPoints < 8) {
@@ -436,7 +545,10 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
       return;
     }
 
-    // Success on Tracing!
+    _handleTracingSuccess(target);
+  }
+
+  void _handleTracingSuccess(String target) {
     AppAudioService.instance.playSuccessChime();
 
     if (_drawStage == 1) {
@@ -452,7 +564,7 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
         ),
       );
 
-      // Advance to Step 2
+      // Automatically advance to Step 2 after 1.2s
       Future.delayed(const Duration(milliseconds: 1400), () {
         if (!mounted) return;
         setState(() {
@@ -498,15 +610,9 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
         key: _confettiKey,
         child: Column(
           children: [
-            // Top Drag Handle & Close
             _buildHeader(context),
-
-            // Tab Selector: [ 🎤 Speak & Spell ] [ ✏️ Trace & Draw ]
             _buildTabSelector(),
-
             const Divider(height: 1, thickness: 1, color: AppColors.borderLight),
-
-            // Tab Body
             Expanded(
               child: _currentTab == PracticeTab.voice
                   ? _buildVoicePracticeBody()
@@ -720,7 +826,6 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
             ),
             child: Column(
               children: [
-                // Display Symbol
                 Text(
                   _voiceStage == 1
                       ? _stage1Symbol
@@ -825,12 +930,12 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
 
           Text(
             _isListening
-                ? 'Listening to you... 👂'
+                ? 'Listening to you... 👂 (Auto-checks when you speak!)'
                 : ((_voiceStage == 1 ? _voiceStage1Success : _voiceStage2Success)
                     ? '⭐ You Did It! ⭐'
                     : 'Tap Mic & Say It! 🎙️'),
             style: TextStyle(
-              fontSize: 16,
+              fontSize: 15,
               fontWeight: FontWeight.bold,
               color: _isListening
                   ? AppColors.orange
@@ -870,17 +975,28 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
-                color: AppColors.green.withOpacity(0.12),
+                color: _voiceFeedback.contains('Awesome') ||
+                        _voiceFeedback.contains('Superstar')
+                    ? AppColors.green.withOpacity(0.12)
+                    : AppColors.orange.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.green.withOpacity(0.3)),
+                border: Border.all(
+                  color: _voiceFeedback.contains('Awesome') ||
+                          _voiceFeedback.contains('Superstar')
+                      ? AppColors.green.withOpacity(0.3)
+                      : AppColors.orange.withOpacity(0.3),
+                ),
               ),
               child: Text(
                 _voiceFeedback,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 15,
+                style: TextStyle(
+                  fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.green,
+                  color: _voiceFeedback.contains('Awesome') ||
+                          _voiceFeedback.contains('Superstar')
+                      ? AppColors.green
+                      : AppColors.textDark,
                 ),
               ),
             ),
@@ -888,7 +1004,7 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
 
           const SizedBox(height: 16),
 
-          // Toddler Instant Encouragement Button
+          // Manual Fallback Button (Kept for young toddlers who speak softly)
           OutlinedButton.icon(
             onPressed: () => _onVoiceSuccess(
               _voiceStage == 1
@@ -916,7 +1032,7 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
   }
 
   // -------------------------------------------------------------
-  // TAB 2: 2-STEP ACCURATE TRACE & DRAW BODY
+  // TAB 2: 2-STEP ACCURATE TRACE & DRAW WITH AUTO-CHECK
   // -------------------------------------------------------------
   Widget _buildDrawPracticeBody() {
     return LayoutBuilder(
@@ -1068,8 +1184,8 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
                         canvasBox.maxHeight,
                       );
 
-                      final marginX = canvasSize.width * 0.12;
-                      final marginY = canvasSize.height * 0.12;
+                      final marginX = canvasSize.width * 0.08;
+                      final marginY = canvasSize.height * 0.10;
                       final bounds = Rect.fromLTWH(
                         marginX,
                         marginY,
@@ -1090,13 +1206,12 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
                       final eval = TracingGuide.evaluateTracing(
                         checkpoints: checkpoints,
                         userStrokes: strokePoints,
-                        hitRadius: 42.0,
+                        hitRadius: 44.0,
                       );
 
                       return Stack(
                         fit: StackFit.expand,
                         children: [
-                          // Gesture detector on top of CustomPaint
                           GestureDetector(
                             onPanStart: (details) {
                               final box =
@@ -1112,6 +1227,7 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
                                 _onPanUpdate(details, box);
                               }
                             },
+                            onPanEnd: (_) => _onPanEnd(canvasSize),
                             child: CustomPaint(
                               painter: AccurateTracingPainter(
                                 targetSymbol: target,
@@ -1137,14 +1253,14 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
                                     vertical: 4,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.90),
+                                    color: Colors.white.withOpacity(0.92),
                                     borderRadius: BorderRadius.circular(12),
                                     border: Border.all(
                                       color: AppColors.borderLight,
                                     ),
                                   ),
                                   child: Text(
-                                    'Trace "$target" 👆',
+                                    'Trace "$target" (Auto-checks!) 👆',
                                     style: const TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.bold,
@@ -1161,7 +1277,7 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
                                   decoration: BoxDecoration(
                                     color: eval.isSuccess
                                         ? AppColors.greenLight
-                                        : Colors.white.withOpacity(0.90),
+                                        : Colors.white.withOpacity(0.92),
                                     borderRadius: BorderRadius.circular(12),
                                     border: Border.all(
                                       color: eval.isSuccess
@@ -1205,7 +1321,7 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
               ),
             ),
 
-            // Check My Work Button
+            // Check My Work Button (Also triggers automatically on finger lift when accurate)
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
               child: Builder(
@@ -1224,7 +1340,7 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
                     onPressed: () {
                       final box = context.findRenderObject() as RenderBox?;
                       final size = box?.size ?? const Size(360, 400);
-                      _checkDrawing(size);
+                      _checkDrawingManual(size);
                     },
                   );
                 },
@@ -1307,12 +1423,6 @@ class DrawingStroke {
 }
 
 /// CustomPainter for the accurate tracing canvas.
-/// Shows:
-/// 1. Stencil background dotted lines.
-/// 2. Checkpoint guide dots:
-///    - Glows vibrant green when the child's finger accurately traces over it!
-///    - Soft purple when yet to be traced.
-/// 3. User's smooth colorful crayon strokes on top!
 class AccurateTracingPainter extends CustomPainter {
   final String targetSymbol;
   final List<Path> paths;
@@ -1333,7 +1443,7 @@ class AccurateTracingPainter extends CustomPainter {
     // 1. Draw Stencil Guide Paths as thick dashed lines
     final stencilPaint = Paint()
       ..color = AppColors.primaryPurple.withOpacity(0.18)
-      ..strokeWidth = 24.0
+      ..strokeWidth = 22.0
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke;

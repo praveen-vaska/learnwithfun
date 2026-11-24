@@ -2,7 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 /// Helper class that creates stencil paths and checkpoint dots for tracing practice.
-/// Supports uppercase letters A-Z, numbers 0-9, shapes, and multi-letter words.
+/// Supports uppercase letters A-Z, numbers 0-9, shapes, and multi-letter words with clear letter gaps.
 class TracingGuide {
   TracingGuide._();
 
@@ -388,31 +388,59 @@ class TracingGuide {
     return paths;
   }
 
-  /// Returns scaled Paths and Checkpoint dots for any text / symbol across the given bounds
+  /// Returns scaled Paths for text / symbol across the given bounds with generous letter gaps.
   static List<Path> getScaledPaths(String text, Rect bounds) {
     final clean = text.trim();
     if (clean.isEmpty) return [];
 
-    // If single character (e.g. 'A' or '1')
+    // Single character (e.g. 'A' or '1')
     if (clean.length == 1) {
+      // Keep proper character aspect ratio (width ~ 0.75 of height)
+      final charHeight = bounds.height * 0.85;
+      final charWidth = min(bounds.width * 0.75, charHeight * 0.75);
+      final charBounds = Rect.fromCenter(
+        center: bounds.center,
+        width: charWidth,
+        height: charHeight,
+      );
       final normPaths = getNormalizedPathsForChar(clean);
-      return _scalePaths(normPaths, bounds);
+      return _scalePaths(normPaths, charBounds);
     }
 
-    // If multi-character word (e.g. 'APPLE' or 'ONE' or 'MOO')
+    // Multi-character word (e.g. 'APPLE', 'ONE', 'MOO')
     final word = clean.toUpperCase();
     final letterCount = word.length;
-    final letterWidth = bounds.width / letterCount;
+
+    // Generous spacing between letters so children can trace each letter cleanly
+    final maxAvailableWidth = bounds.width * 0.92;
+    final maxAvailableHeight = bounds.height * 0.75;
+
+    // Proportional letter width and gap
+    // Ideal ratio: letterWidth = 0.65 * height, gap = 0.30 * letterWidth
+    double letterHeight = maxAvailableHeight;
+    double letterWidth = letterHeight * 0.60;
+    double gap = letterWidth * 0.28;
+
+    double totalWordWidth = (letterCount * letterWidth) + ((letterCount - 1) * gap);
+
+    // If total width exceeds canvas bounds, scale down proportionally
+    if (totalWordWidth > maxAvailableWidth) {
+      final scale = maxAvailableWidth / totalWordWidth;
+      letterHeight *= scale;
+      letterWidth *= scale;
+      gap *= scale;
+      totalWordWidth = maxAvailableWidth;
+    }
+
+    final startX = bounds.left + (bounds.width - totalWordWidth) / 2;
+    final startY = bounds.top + (bounds.height - letterHeight) / 2;
+
     final result = <Path>[];
 
     for (int i = 0; i < letterCount; i++) {
       final char = word[i];
-      final charBounds = Rect.fromLTWH(
-        bounds.left + (i * letterWidth),
-        bounds.top,
-        letterWidth,
-        bounds.height,
-      );
+      final charLeft = startX + (i * (letterWidth + gap));
+      final charBounds = Rect.fromLTWH(charLeft, startY, letterWidth, letterHeight);
       final normPaths = getNormalizedPathsForChar(char);
       result.addAll(_scalePaths(normPaths, charBounds));
     }
@@ -444,7 +472,7 @@ class TracingGuide {
         final length = metric.length;
         if (length <= 0) continue;
 
-        final numSteps = max(5, (length / 22).round());
+        final numSteps = max(5, (length / 20).round());
         for (int i = 0; i <= numSteps; i++) {
           final distance = (i / numSteps) * length;
           final tangent = metric.getTangentForOffset(distance);
@@ -459,11 +487,11 @@ class TracingGuide {
   }
 
   /// Calculates the fraction of checkpoints visited by the user's strokes.
-  /// Tolerance hit radius is typically 36.0 - 45.0 px for toddlers.
+  /// Tolerance hit radius is 40.0 - 45.0 px for toddlers.
   static TracingEvaluation evaluateTracing({
     required List<Offset> checkpoints,
     required List<List<Offset>> userStrokes,
-    double hitRadius = 40.0,
+    double hitRadius = 42.0,
   }) {
     if (checkpoints.isEmpty) {
       return TracingEvaluation(
