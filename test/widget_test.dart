@@ -244,13 +244,17 @@ void main() {
     expect(find.text('Duolingo Kid Practice'), findsOneWidget);
     expect(find.text('Speak & Spell 🎤'), findsOneWidget);
     expect(find.text('Trace & Draw ✏️'), findsOneWidget);
-    expect(find.text('I Said It! 🌟 (+15 XP)'), findsOneWidget);
+    expect(find.text('1. Say "A"'), findsOneWidget);
+    expect(find.text('2. Say "A for Apple"'), findsOneWidget);
+    expect(find.text('I Said "A"! 🌟'), findsOneWidget);
 
     // Switch to Trace & Draw tab
     await tester.tap(find.text('Trace & Draw ✏️'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
+    expect(find.text('1. Trace "A"'), findsOneWidget);
+    expect(find.text('2. Trace "Apple"'), findsOneWidget);
     expect(find.text('Check My Work 🎨'), findsOneWidget);
   });
 }

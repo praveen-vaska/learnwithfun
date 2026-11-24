@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:learnwithfun/core/services/audio_service.dart';
@@ -15,6 +16,7 @@ import 'package:learnwithfun/data/models/match_pair_level.dart';
 import 'package:learnwithfun/core/utils/auth_validators.dart';
 import 'package:learnwithfun/data/repositories/auth_repository.dart';
 import 'package:learnwithfun/blocs/auth_cubit.dart';
+import 'package:learnwithfun/features/learning/tracing_guide.dart';
 
 void main() {
   setUp(() {
@@ -653,6 +655,65 @@ void main() {
       expect(cubit.state, isA<GuestExplorer>());
 
       cubit.close();
+    });
+  });
+
+  group('Duolingo Interactive Practice & Accurate Tracing', () {
+    test('TracingGuide generates valid scaled paths and checkpoints for A and APPLE', () {
+      const bounds = Rect.fromLTWH(20, 20, 300, 300);
+
+      // Letter A
+      final pathsA = TracingGuide.getScaledPaths('A', bounds);
+      expect(pathsA.isNotEmpty, true);
+      final checkpointsA = TracingGuide.extractCheckpoints(pathsA);
+      expect(checkpointsA.length, greaterThanOrEqualTo(15));
+
+      // Word APPLE
+      final pathsApple = TracingGuide.getScaledPaths('APPLE', bounds);
+      expect(pathsApple.isNotEmpty, true);
+      final checkpointsApple = TracingGuide.extractCheckpoints(pathsApple);
+      expect(checkpointsApple.length, greaterThanOrEqualTo(30));
+    });
+
+    test('TracingGuide rejects off-target strokes drawn far outside the stencil', () {
+      const bounds = Rect.fromLTWH(50, 50, 200, 200);
+      final paths = TracingGuide.getScaledPaths('A', bounds);
+      final checkpoints = TracingGuide.extractCheckpoints(paths);
+
+      // Strokes drawn far in the corner (0,0) away from bounds (50..250)
+      final offTargetStrokes = [
+        [const Offset(5, 5), const Offset(6, 6), const Offset(7, 7)],
+        [const Offset(10, 10), const Offset(12, 12)],
+      ];
+
+      final eval = TracingGuide.evaluateTracing(
+        checkpoints: checkpoints,
+        userStrokes: offTargetStrokes,
+        hitRadius: 40.0,
+      );
+
+      expect(eval.isSuccess, false);
+      expect(eval.coverage, lessThan(0.20));
+    });
+
+    test('TracingGuide accepts accurate strokes along the stencil path', () {
+      const bounds = Rect.fromLTWH(50, 50, 200, 200);
+      final paths = TracingGuide.getScaledPaths('A', bounds);
+      final checkpoints = TracingGuide.extractCheckpoints(paths);
+
+      // Simulate child accurately tracing all checkpoints
+      final accurateStrokes = [
+        checkpoints.sublist(0, (checkpoints.length * 0.85).round()),
+      ];
+
+      final eval = TracingGuide.evaluateTracing(
+        checkpoints: checkpoints,
+        userStrokes: accurateStrokes,
+        hitRadius: 40.0,
+      );
+
+      expect(eval.isSuccess, true);
+      expect(eval.coverage, greaterThanOrEqualTo(0.60));
     });
   });
 }

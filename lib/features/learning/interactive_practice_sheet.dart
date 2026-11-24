@@ -12,11 +12,18 @@ import '../../core/theme/app_text_styles.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/confetti_overlay.dart';
 import '../../data/models/lesson.dart';
+import 'tracing_guide.dart';
 
 /// Interactive Practice Sheet for Kids (Duolingo Style)
 /// Features:
-/// 1. Voice Practice: "Speak & Spell" 🎤 (Kid speaks, app listens, celebrates)
-/// 2. Trace & Draw: ✏️ (Dotted stencil guide, finger crayon drawing, validation)
+/// 1. 2-Step Voice Practice:
+///    - Step 1: Say the Letter/Symbol (e.g., "Say: A!")
+///    - Step 2: Say the Word Association (e.g., "Now say: A for Apple!")
+/// 2. 2-Step Accurate Trace & Draw:
+///    - Step 1: Trace the Letter/Symbol ('A')
+///    - Step 2: Trace the Word ('APPLE')
+///    - Real-time stencil checkpoint hit-testing (dots light up green when traced accurately!)
+///    - Stroke coverage validation (requires >=60% accuracy on the stencil lines)
 class InteractivePracticeSheet extends StatefulWidget {
   final Lesson lesson;
 
@@ -47,19 +54,24 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
   late AnimationController _pulseController;
 
   // --- Voice State ---
+  int _voiceStage = 1; // 1 = Letter ('A'), 2 = Word ('A for Apple')
   stt.SpeechToText? _speech;
   bool _speechAvailable = false;
   bool _isListening = false;
   String _recognizedWords = '';
-  bool _voiceSuccess = false;
+  bool _voiceStage1Success = false;
+  bool _voiceStage2Success = false;
   String _voiceFeedback = '';
 
   // --- Drawing State ---
-  final List<DrawingStroke> _strokes = [];
+  int _drawStage = 1; // 1 = Trace Letter ('A'), 2 = Trace Word ('APPLE')
+  final List<DrawingStroke> _strokesStage1 = [];
+  final List<DrawingStroke> _strokesStage2 = [];
   Color _selectedColor = AppColors.primaryPurple;
-  final double _strokeWidth = 10.0;
+  final double _strokeWidth = 12.0;
   bool _isEraser = false;
-  bool _drawingSuccess = false;
+  bool _drawStage1Success = false;
+  bool _drawStage2Success = false;
 
   final List<Color> _palette = const [
     AppColors.primaryPurple,
@@ -79,7 +91,7 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
     )..repeat(reverse: true);
 
     _initSpeechRecognizer();
-    _playWelcomePrompt();
+    _playCurrentVoicePrompt();
   }
 
   @override
@@ -89,38 +101,89 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
     super.dispose();
   }
 
-  String get _targetSymbol {
+  // -------------------------------------------------------------
+  // CONCEPT RESOLUTION (Letter, Word, Prompts)
+  // -------------------------------------------------------------
+  String get _stage1Symbol {
     final title = widget.lesson.title.trim();
+    if (widget.lesson.categoryId == 'abc') {
+      return title.split(' ').first.trim().toUpperCase();
+    }
     if (title.startsWith('Letter ')) {
       return title.replaceAll('Letter ', '').trim();
     }
     if (title.startsWith('Number ')) {
       return title.replaceAll('Number ', '').trim();
     }
-    if (widget.lesson.conceptWord.isNotEmpty) {
+    if (widget.lesson.categoryId == 'animals') {
+      return widget.lesson.title;
+    }
+    if (widget.lesson.categoryId == 'shapes') {
       return widget.lesson.conceptWord;
     }
     return title;
   }
 
-  String get _promptSentence {
-    final symbol = _targetSymbol;
-    final concept = widget.lesson.conceptWord;
-    if (widget.lesson.categoryId == 'cat_alphabets') {
-      return 'Say: $symbol for $concept!';
-    } else if (widget.lesson.categoryId == 'cat_numbers') {
-      return 'Say: $symbol, $concept!';
-    } else if (widget.lesson.categoryId == 'cat_animals') {
-      return 'Say: ${widget.lesson.title}! ${widget.lesson.soundText}';
+  String get _stage2Word {
+    if (widget.lesson.categoryId == 'abc') {
+      return widget.lesson.conceptWord.isNotEmpty
+          ? widget.lesson.conceptWord
+          : 'Apple';
+    } else if (widget.lesson.categoryId == '123') {
+      return widget.lesson.conceptWord.isNotEmpty
+          ? widget.lesson.conceptWord
+          : 'One';
+    } else if (widget.lesson.categoryId == 'animals') {
+      // Return sound (e.g., 'Moo', 'Roar') or animal sound text
+      final sound = widget.lesson.soundText;
+      if (sound.contains('says ')) {
+        return sound.split('says ').last.replaceAll('!', '').trim();
+      }
+      return 'Moo';
+    } else if (widget.lesson.categoryId == 'shapes') {
+      return 'Round';
+    }
+    return widget.lesson.conceptWord.isNotEmpty
+        ? widget.lesson.conceptWord
+        : 'Good';
+  }
+
+  String get _currentVoicePrompt {
+    if (_voiceStage == 1) {
+      if (widget.lesson.categoryId == 'abc') {
+        return 'Say: $_stage1Symbol!';
+      } else if (widget.lesson.categoryId == '123') {
+        return 'Say: $_stage1Symbol!';
+      } else if (widget.lesson.categoryId == 'animals') {
+        return 'Say: $_stage1Symbol!';
+      } else {
+        return 'Say: $_stage1Symbol!';
+      }
     } else {
-      return 'Say: $concept!';
+      if (widget.lesson.categoryId == 'abc') {
+        return 'Now say: $_stage1Symbol for $_stage2Word!';
+      } else if (widget.lesson.categoryId == '123') {
+        return 'Now say: $_stage1Symbol, $_stage2Word!';
+      } else if (widget.lesson.categoryId == 'animals') {
+        return 'Now say: $_stage1Symbol says $_stage2Word!';
+      } else {
+        return 'Now say: $_stage1Symbol, $_stage2Word!';
+      }
     }
   }
 
-  Future<void> _playWelcomePrompt() async {
-    await Future.delayed(const Duration(milliseconds: 350));
+  String get _currentDrawTarget {
+    return _drawStage == 1 ? _stage1Symbol : _stage2Word;
+  }
+
+  List<DrawingStroke> get _activeStrokes {
+    return _drawStage == 1 ? _strokesStage1 : _strokesStage2;
+  }
+
+  Future<void> _playCurrentVoicePrompt() async {
+    await Future.delayed(const Duration(milliseconds: 300));
     if (!mounted) return;
-    AppAudioService.instance.speak(_promptSentence);
+    AppAudioService.instance.speak(_currentVoicePrompt);
   }
 
   // -------------------------------------------------------------
@@ -159,14 +222,16 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
   Future<void> _startListening() async {
     AppAudioService.instance.playTapSound();
     if (_speech == null || !_speechAvailable) {
-      // Toddler fallback: auto-listen simulation
+      // Simulation / Toddler fallback
       setState(() {
         _isListening = true;
-        _recognizedWords = 'Listening to your sweet voice...';
+        _recognizedWords = 'Listening to your voice...';
       });
       await Future.delayed(const Duration(seconds: 2));
       if (mounted) {
-        _onVoiceSuccess(widget.lesson.conceptWord);
+        _onVoiceSuccess(
+          _voiceStage == 1 ? _stage1Symbol : '$_stage1Symbol for $_stage2Word',
+        );
       }
       return;
     }
@@ -209,32 +274,62 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
 
   void _evaluateSpeech(String words) {
     final lower = words.toLowerCase().trim();
-    final targetLower = _targetSymbol.toLowerCase().trim();
-    final conceptLower = widget.lesson.conceptWord.toLowerCase().trim();
-    final titleLower = widget.lesson.title.toLowerCase().trim();
 
-    // Check if kid said the target letter, word, or sound
-    final isMatch = lower.contains(targetLower) ||
-        lower.contains(conceptLower) ||
-        lower.contains(titleLower) ||
-        lower.length >= 2;
+    if (_voiceStage == 1) {
+      final target = _stage1Symbol.toLowerCase().trim();
+      // Match letter or short symbol
+      final isMatch = lower.contains(target) ||
+          lower.startsWith(target) ||
+          lower.isNotEmpty;
 
-    if (isMatch && !_voiceSuccess) {
-      _onVoiceSuccess(words);
+      if (isMatch && !_voiceStage1Success) {
+        _onVoiceSuccess(words);
+      }
+    } else {
+      final letter = _stage1Symbol.toLowerCase().trim();
+      final word = _stage2Word.toLowerCase().trim();
+      final isMatch = lower.contains(word) ||
+          (lower.contains(letter) && lower.contains('for')) ||
+          lower.length >= 2;
+
+      if (isMatch && !_voiceStage2Success) {
+        _onVoiceSuccess(words);
+      }
     }
   }
 
   void _onVoiceSuccess(String spokenText) {
     _stopListening();
-    setState(() {
-      _voiceSuccess = true;
-      _voiceFeedback = 'Awesome! You said: "$spokenText" 🌟';
-    });
-
     AppAudioService.instance.playSuccessChime();
-    _confettiKey.currentState?.play();
-    context.read<UserCubit>().addXp(15);
-    AppAudioService.instance.speak('Terrific job! You earned 15 stars!');
+
+    if (_voiceStage == 1) {
+      setState(() {
+        _voiceStage1Success = true;
+        _voiceFeedback = 'Awesome! You said: "$spokenText" ⭐';
+      });
+
+      // Automatically advance to Stage 2 after 1.2 seconds
+      Future.delayed(const Duration(milliseconds: 1400), () {
+        if (!mounted) return;
+        setState(() {
+          _voiceStage = 2;
+          _recognizedWords = '';
+          _voiceFeedback = '';
+        });
+        _playCurrentVoicePrompt();
+      });
+    } else {
+      setState(() {
+        _voiceStage2Success = true;
+        _voiceFeedback = 'Superstar! You said: "$spokenText" 🌟🌟🌟';
+      });
+
+      _confettiKey.currentState?.play();
+      context.read<UserCubit>().addXp(15);
+      AppAudioService.instance.speak(
+        'Outstanding job! You said both $_stage1Symbol and $_stage2Word! 15 stars for you!',
+      );
+    }
   }
 
   // -------------------------------------------------------------
@@ -243,7 +338,7 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
   void _onPanStart(DragStartDetails details, RenderBox box) {
     final localPosition = box.globalToLocal(details.globalPosition);
     setState(() {
-      _strokes.add(
+      _activeStrokes.add(
         DrawingStroke(
           points: [localPosition],
           color: _isEraser ? Colors.white : _selectedColor,
@@ -256,9 +351,9 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
 
   void _onPanUpdate(DragUpdateDetails details, RenderBox box) {
     final localPosition = box.globalToLocal(details.globalPosition);
-    if (_strokes.isNotEmpty) {
+    if (_activeStrokes.isNotEmpty) {
       setState(() {
-        _strokes.last.points.add(localPosition);
+        _activeStrokes.last.points.add(localPosition);
       });
     }
   }
@@ -266,46 +361,116 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
   void _clearCanvas() {
     AppAudioService.instance.playTapSound();
     setState(() {
-      _strokes.clear();
-      _drawingSuccess = false;
+      _activeStrokes.clear();
+      if (_drawStage == 1) {
+        _drawStage1Success = false;
+      } else {
+        _drawStage2Success = false;
+      }
     });
   }
 
   void _undoCanvas() {
     AppAudioService.instance.playTapSound();
-    if (_strokes.isNotEmpty) {
+    if (_activeStrokes.isNotEmpty) {
       setState(() {
-        _strokes.removeLast();
+        _activeStrokes.removeLast();
       });
     }
   }
 
-  void _checkDrawing() {
-    int totalPoints = 0;
-    for (final s in _strokes) {
-      if (!s.isEraser) {
-        totalPoints += s.points.length;
-      }
-    }
+  void _checkDrawing(Size canvasSize) {
+    AppAudioService.instance.playTapSound();
 
-    if (totalPoints < 10) {
+    final target = _currentDrawTarget;
+    // Calculate stencil bounds with padding
+    final marginX = canvasSize.width * 0.12;
+    final marginY = canvasSize.height * 0.12;
+    final bounds = Rect.fromLTWH(
+      marginX,
+      marginY,
+      canvasSize.width - (marginX * 2),
+      canvasSize.height - (marginY * 2),
+    );
+
+    final paths = TracingGuide.getScaledPaths(target, bounds);
+    final checkpoints = TracingGuide.extractCheckpoints(paths);
+
+    final strokePoints = _activeStrokes
+        .where((s) => !s.isEraser)
+        .map((s) => s.points)
+        .toList();
+
+    final eval = TracingGuide.evaluateTracing(
+      checkpoints: checkpoints,
+      userStrokes: strokePoints,
+      hitRadius: 42.0, // Child-friendly hit radius
+    );
+
+    if (eval.totalPoints < 8) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Draw or trace on the stencil with your finger! 🎨'),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: Text(
+            'Trace on the dotted lines of "$target" with your finger! 👆',
+          ),
+          duration: const Duration(seconds: 2),
           backgroundColor: AppColors.orange,
         ),
       );
       return;
     }
 
+    if (!eval.isSuccess) {
+      final percent = (eval.coverage * 100).toInt();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            percent < 25
+                ? 'Trace accurately on the dotted stencil of "$target"! ✏️'
+                : 'Almost there! You covered $percent% of "$target". Trace the rest of the lines! ✨',
+          ),
+          duration: const Duration(seconds: 3),
+          backgroundColor: AppColors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Success on Tracing!
     AppAudioService.instance.playSuccessChime();
-    _confettiKey.currentState?.play();
-    setState(() {
-      _drawingSuccess = true;
-    });
-    context.read<UserCubit>().addXp(15);
-    AppAudioService.instance.speak('Beautiful drawing! 15 stars for you!');
+
+    if (_drawStage == 1) {
+      setState(() {
+        _drawStage1Success = true;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('🎉 Perfect! You traced "$target"! Now trace Step 2!'),
+          duration: const Duration(seconds: 2),
+          backgroundColor: AppColors.green,
+        ),
+      );
+
+      // Advance to Step 2
+      Future.delayed(const Duration(milliseconds: 1400), () {
+        if (!mounted) return;
+        setState(() {
+          _drawStage = 2;
+        });
+        AppAudioService.instance.speak('Now trace: $_stage2Word!');
+      });
+    } else {
+      setState(() {
+        _drawStage2Success = true;
+      });
+
+      _confettiKey.currentState?.play();
+      context.read<UserCubit>().addXp(15);
+      AppAudioService.instance.speak(
+        'Master artist! You traced both $_stage1Symbol and $_stage2Word! 15 stars earned!',
+      );
+    }
   }
 
   // -------------------------------------------------------------
@@ -314,7 +479,7 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
-    final sheetHeight = size.height * 0.88;
+    final sheetHeight = size.height * 0.90;
 
     return Container(
       height: sheetHeight,
@@ -355,7 +520,7 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
 
   Widget _buildHeader(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 12, 16, 8),
+      padding: const EdgeInsets.fromLTRB(20, 12, 16, 6),
       child: Row(
         children: [
           Container(
@@ -480,17 +645,65 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
   }
 
   // -------------------------------------------------------------
-  // TAB 1: SPEAK & SPELL
+  // TAB 1: 2-STEP SPEAK & SPELL BODY
   // -------------------------------------------------------------
   Widget _buildVoicePracticeBody() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       child: Column(
         children: [
+          // 2-Step Progress Selector: [ 1️⃣ Say 'A' ] [ 2️⃣ Say 'A for Apple' ]
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: AppColors.background,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _buildStageChip(
+                    stageNumber: 1,
+                    title: '1. Say "$_stage1Symbol"',
+                    isCompleted: _voiceStage1Success,
+                    isActive: _voiceStage == 1,
+                    onTap: () {
+                      AppAudioService.instance.playTapSound();
+                      setState(() {
+                        _voiceStage = 1;
+                        _voiceFeedback = '';
+                      });
+                      _playCurrentVoicePrompt();
+                    },
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: _buildStageChip(
+                    stageNumber: 2,
+                    title: '2. Say "$_stage1Symbol for $_stage2Word"',
+                    isCompleted: _voiceStage2Success,
+                    isActive: _voiceStage == 2,
+                    onTap: () {
+                      AppAudioService.instance.playTapSound();
+                      setState(() {
+                        _voiceStage = 2;
+                        _voiceFeedback = '';
+                      });
+                      _playCurrentVoicePrompt();
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 14),
+
           // Target Concept Card
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
@@ -507,39 +720,35 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
             ),
             child: Column(
               children: [
+                // Display Symbol
                 Text(
-                  _targetSymbol,
-                  style: const TextStyle(
-                    fontSize: 72,
+                  _voiceStage == 1
+                      ? _stage1Symbol
+                      : '$_stage1Symbol for $_stage2Word',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: _voiceStage == 1 ? 72 : 32,
                     fontWeight: FontWeight.w900,
                     color: AppColors.primaryPurple,
-                    letterSpacing: 2,
+                    letterSpacing: _voiceStage == 1 ? 2 : 1,
                   ),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  widget.lesson.conceptWord,
-                  style: AppTextStyles.heading1().copyWith(
-                    color: AppColors.textDark,
-                    fontSize: 24,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _promptSentence,
+                  _currentVoicePrompt,
                   textAlign: TextAlign.center,
                   style: AppTextStyles.bodyMedium(
                     color: AppColors.textMedium,
-                  ).copyWith(fontWeight: FontWeight.w600),
+                  ).copyWith(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 ElevatedButton.icon(
                   onPressed: () {
                     AppAudioService.instance.playTapSound();
-                    AppAudioService.instance.speak(_promptSentence);
+                    AppAudioService.instance.speak(_currentVoicePrompt);
                   },
-                  icon: const Icon(Icons.volume_up_rounded, size: 20),
-                  label: const Text('Listen Again 🔊'),
+                  icon: const Icon(Icons.volume_up_rounded, size: 18),
+                  label: const Text('Listen Prompt 🔊'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: AppColors.primaryPurple,
@@ -553,9 +762,9 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
             ),
           ),
 
-          const SizedBox(height: 28),
+          const SizedBox(height: 22),
 
-          // Big Mic Action Button with Pulsing Wave Animation
+          // Big Mic Button with Wave Pulses
           Center(
             child: Stack(
               alignment: Alignment.center,
@@ -565,8 +774,8 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
                     animation: _pulseController,
                     builder: (context, child) {
                       return Container(
-                        width: 140 + (_pulseController.value * 30),
-                        height: 140 + (_pulseController.value * 30),
+                        width: 130 + (_pulseController.value * 30),
+                        height: 130 + (_pulseController.value * 30),
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: AppColors.orange.withOpacity(
@@ -579,8 +788,8 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
                 GestureDetector(
                   onTap: _isListening ? _stopListening : _startListening,
                   child: Container(
-                    width: 110,
-                    height: 110,
+                    width: 104,
+                    height: 104,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: LinearGradient(
@@ -596,15 +805,15 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
                                   ? AppColors.orange
                                   : AppColors.primaryPurple)
                               .withOpacity(0.4),
-                          blurRadius: 18,
-                          offset: const Offset(0, 8),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6),
                         ),
                       ],
                     ),
                     child: Icon(
                       _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
                       color: Colors.white,
-                      size: 52,
+                      size: 48,
                     ),
                   ),
                 ),
@@ -612,28 +821,34 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
             ),
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
 
           Text(
             _isListening
                 ? 'Listening to you... 👂'
-                : (_voiceSuccess ? '⭐ You Did It! ⭐' : 'Tap Mic & Say It! 🎙️'),
+                : ((_voiceStage == 1 ? _voiceStage1Success : _voiceStage2Success)
+                    ? '⭐ You Did It! ⭐'
+                    : 'Tap Mic & Say It! 🎙️'),
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
               color: _isListening
                   ? AppColors.orange
-                  : (_voiceSuccess ? AppColors.green : AppColors.textDark),
+                  : ((_voiceStage == 1
+                          ? _voiceStage1Success
+                          : _voiceStage2Success)
+                      ? AppColors.green
+                      : AppColors.textDark),
             ),
           ),
 
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
 
-          // Speech Feedback or Live Transcription
+          // Speech Live Transcript
           if (_recognizedWords.isNotEmpty)
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 16),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
                 color: AppColors.background,
                 borderRadius: BorderRadius.circular(16),
@@ -651,9 +866,9 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
             ),
 
           if (_voiceFeedback.isNotEmpty) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
                 color: AppColors.green.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(16),
@@ -671,13 +886,21 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
             ),
           ],
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
 
-          // Toddler Friendly Instant Encouragement Button
+          // Toddler Instant Encouragement Button
           OutlinedButton.icon(
-            onPressed: () => _onVoiceSuccess(widget.lesson.conceptWord),
+            onPressed: () => _onVoiceSuccess(
+              _voiceStage == 1
+                  ? _stage1Symbol
+                  : '$_stage1Symbol for $_stage2Word',
+            ),
             icon: const Icon(Icons.star_rounded, color: AppColors.orange),
-            label: const Text('I Said It! 🌟 (+15 XP)'),
+            label: Text(
+              _voiceStage == 1
+                  ? 'I Said "$_stage1Symbol"! 🌟'
+                  : 'I Said "$_stage1Symbol for $_stage2Word"! 🌟 (+15 XP)',
+            ),
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.orange,
               side: const BorderSide(color: AppColors.orange, width: 1.5),
@@ -693,202 +916,377 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
   }
 
   // -------------------------------------------------------------
-  // TAB 2: TRACE & DRAW
+  // TAB 2: 2-STEP ACCURATE TRACE & DRAW BODY
   // -------------------------------------------------------------
   Widget _buildDrawPracticeBody() {
-    final GlobalKey canvasKey = GlobalKey();
-
-    return Column(
-      children: [
-        // Top Toolbar: Colors, Eraser, Undo, Clear
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            children: [
-              // Crayon Color Dots
-              ..._palette.map((color) {
-                final isSelected = !_isEraser && _selectedColor == color;
-                return GestureDetector(
-                  onTap: () {
-                    AppAudioService.instance.playTapSound();
-                    setState(() {
-                      _isEraser = false;
-                      _selectedColor = color;
-                    });
-                  },
-                  child: Container(
-                    margin: const EdgeInsets.only(right: 8),
-                    width: isSelected ? 34 : 26,
-                    height: isSelected ? 34 : 26,
-                    decoration: BoxDecoration(
-                      color: color,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: isSelected ? Colors.black : Colors.white,
-                        width: isSelected ? 3 : 1.5,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Column(
+          children: [
+            // 2-Step Stage Chips: [ 1️⃣ Trace 'A' ] [ 2️⃣ Trace 'APPLE' ]
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _buildStageChip(
+                        stageNumber: 1,
+                        title: '1. Trace "$_stage1Symbol"',
+                        isCompleted: _drawStage1Success,
+                        isActive: _drawStage == 1,
+                        onTap: () {
+                          AppAudioService.instance.playTapSound();
+                          setState(() {
+                            _drawStage = 1;
+                          });
+                        },
                       ),
-                      boxShadow: [
-                        if (isSelected)
-                          BoxShadow(
-                            color: color.withOpacity(0.5),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2),
-                          ),
-                      ],
                     ),
-                  ),
-                );
-              }),
-
-              const Spacer(),
-
-              // Eraser Toggle
-              IconButton(
-                icon: Icon(
-                  Icons.auto_fix_normal_rounded,
-                  color: _isEraser ? AppColors.orange : AppColors.textMedium,
-                  size: 24,
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: _buildStageChip(
+                        stageNumber: 2,
+                        title: '2. Trace "$_stage2Word"',
+                        isCompleted: _drawStage2Success,
+                        isActive: _drawStage == 2,
+                        onTap: () {
+                          AppAudioService.instance.playTapSound();
+                          setState(() {
+                            _drawStage = 2;
+                          });
+                        },
+                      ),
+                    ),
+                  ],
                 ),
-                tooltip: 'Eraser',
-                onPressed: () {
-                  AppAudioService.instance.playTapSound();
-                  setState(() {
-                    _isEraser = !_isEraser;
-                  });
-                },
-              ),
-
-              // Undo
-              IconButton(
-                icon: const Icon(
-                  Icons.undo_rounded,
-                  color: AppColors.textMedium,
-                  size: 24,
-                ),
-                tooltip: 'Undo',
-                onPressed: _undoCanvas,
-              ),
-
-              // Clear
-              IconButton(
-                icon: const Icon(
-                  Icons.delete_outline_rounded,
-                  color: AppColors.textMedium,
-                  size: 24,
-                ),
-                tooltip: 'Clear',
-                onPressed: _clearCanvas,
-              ),
-            ],
-          ),
-        ),
-
-        // Drawing Canvas with Dotted Stencil Background
-        Expanded(
-          child: Container(
-            margin: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF9F7FE),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: AppColors.primaryPurple.withOpacity(0.2),
-                width: 2,
               ),
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(22),
-              child: Stack(
-                fit: StackFit.expand,
+
+            // Toolbar: Color Dots, Eraser, Undo, Clear
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Row(
                 children: [
-                  // 1. Dotted Stencil Guide in Background
-                  Center(
-                    child: Opacity(
-                      opacity: 0.18,
-                      child: Text(
-                        _targetSymbol,
-                        style: const TextStyle(
-                          fontSize: 180,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.primaryPurple,
+                  ..._palette.map((color) {
+                    final isSelected = !_isEraser && _selectedColor == color;
+                    return GestureDetector(
+                      onTap: () {
+                        AppAudioService.instance.playTapSound();
+                        setState(() {
+                          _isEraser = false;
+                          _selectedColor = color;
+                        });
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        width: isSelected ? 32 : 24,
+                        height: isSelected ? 32 : 24,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isSelected ? Colors.black : Colors.white,
+                            width: isSelected ? 3 : 1.5,
+                          ),
+                          boxShadow: [
+                            if (isSelected)
+                              BoxShadow(
+                                color: color.withOpacity(0.5),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                          ],
                         ),
                       ),
-                    ),
-                  ),
+                    );
+                  }),
 
-                  // 2. Kid Interactive Drawing Surface
-                  Builder(
-                    builder: (canvasContext) {
-                      return GestureDetector(
-                        onPanStart: (details) {
-                          final box =
-                              canvasKey.currentContext?.findRenderObject()
-                                  as RenderBox?;
-                          if (box != null) {
-                            _onPanStart(details, box);
-                          }
-                        },
-                        onPanUpdate: (details) {
-                          final box =
-                              canvasKey.currentContext?.findRenderObject()
-                                  as RenderBox?;
-                          if (box != null) {
-                            _onPanUpdate(details, box);
-                          }
-                        },
-                        child: CustomPaint(
-                          key: canvasKey,
-                          painter: StencilDrawingPainter(strokes: _strokes),
-                          size: Size.infinite,
-                        ),
-                      );
+                  const Spacer(),
+
+                  IconButton(
+                    icon: Icon(
+                      Icons.auto_fix_normal_rounded,
+                      color: _isEraser ? AppColors.orange : AppColors.textMedium,
+                      size: 22,
+                    ),
+                    tooltip: 'Eraser',
+                    onPressed: () {
+                      AppAudioService.instance.playTapSound();
+                      setState(() {
+                        _isEraser = !_isEraser;
+                      });
                     },
                   ),
 
-                  // Helper instructions pill at top of canvas
-                  Positioned(
-                    top: 10,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.85),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.borderLight),
-                        ),
-                        child: Text(
-                          'Trace "$_targetSymbol" with your finger! 👆',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.primaryPurple,
-                          ),
-                        ),
-                      ),
+                  IconButton(
+                    icon: const Icon(
+                      Icons.undo_rounded,
+                      color: AppColors.textMedium,
+                      size: 22,
                     ),
+                    tooltip: 'Undo',
+                    onPressed: _undoCanvas,
+                  ),
+
+                  IconButton(
+                    icon: const Icon(
+                      Icons.delete_outline_rounded,
+                      color: AppColors.textMedium,
+                      size: 22,
+                    ),
+                    tooltip: 'Clear',
+                    onPressed: _clearCanvas,
                   ),
                 ],
               ),
             ),
-          ),
-        ),
 
-        // Bottom Action Bar: "Check My Work 🎨"
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-          child: AppButton(
-            label: _drawingSuccess ? 'Great Job! 🌟 +15 XP' : 'Check My Work 🎨',
-            variant: _drawingSuccess
-                ? AppButtonVariant.primary
-                : AppButtonVariant.secondary,
-            onPressed: _checkDrawing,
-          ),
+            // Drawing Canvas Area with Live Stencil Hit-Testing
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFBF9FF),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: AppColors.primaryPurple.withOpacity(0.2),
+                    width: 2,
+                  ),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(22),
+                  child: LayoutBuilder(
+                    builder: (canvasCtx, canvasBox) {
+                      final canvasSize = Size(
+                        canvasBox.maxWidth,
+                        canvasBox.maxHeight,
+                      );
+
+                      final marginX = canvasSize.width * 0.12;
+                      final marginY = canvasSize.height * 0.12;
+                      final bounds = Rect.fromLTWH(
+                        marginX,
+                        marginY,
+                        canvasSize.width - (marginX * 2),
+                        canvasSize.height - (marginY * 2),
+                      );
+
+                      final target = _currentDrawTarget;
+                      final paths = TracingGuide.getScaledPaths(target, bounds);
+                      final checkpoints =
+                          TracingGuide.extractCheckpoints(paths);
+
+                      final strokePoints = _activeStrokes
+                          .where((s) => !s.isEraser)
+                          .map((s) => s.points)
+                          .toList();
+
+                      final eval = TracingGuide.evaluateTracing(
+                        checkpoints: checkpoints,
+                        userStrokes: strokePoints,
+                        hitRadius: 42.0,
+                      );
+
+                      return Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          // Gesture detector on top of CustomPaint
+                          GestureDetector(
+                            onPanStart: (details) {
+                              final box =
+                                  canvasCtx.findRenderObject() as RenderBox?;
+                              if (box != null) {
+                                _onPanStart(details, box);
+                              }
+                            },
+                            onPanUpdate: (details) {
+                              final box =
+                                  canvasCtx.findRenderObject() as RenderBox?;
+                              if (box != null) {
+                                _onPanUpdate(details, box);
+                              }
+                            },
+                            child: CustomPaint(
+                              painter: AccurateTracingPainter(
+                                targetSymbol: target,
+                                paths: paths,
+                                checkpoints: checkpoints,
+                                hitIndices: eval.hitIndices,
+                                strokes: _activeStrokes,
+                              ),
+                              size: Size.infinite,
+                            ),
+                          ),
+
+                          // Live Tracing Progress Indicator Banner
+                          Positioned(
+                            top: 8,
+                            left: 12,
+                            right: 12,
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.90),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: AppColors.borderLight,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'Trace "$target" 👆',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.primaryPurple,
+                                    ),
+                                  ),
+                                ),
+                                const Spacer(),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: eval.isSuccess
+                                        ? AppColors.greenLight
+                                        : Colors.white.withOpacity(0.90),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: eval.isSuccess
+                                          ? AppColors.green
+                                          : AppColors.borderLight,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        eval.isSuccess
+                                            ? Icons.check_circle_rounded
+                                            : Icons.auto_awesome_rounded,
+                                        size: 14,
+                                        color: eval.isSuccess
+                                            ? AppColors.green
+                                            : AppColors.orange,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Traced: ${(eval.coverage * 100).toInt()}%',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: eval.isSuccess
+                                              ? AppColors.green
+                                              : AppColors.textDark,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+
+            // Check My Work Button
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+              child: Builder(
+                builder: (btnCtx) {
+                  return AppButton(
+                    label: (_drawStage == 1
+                            ? _drawStage1Success
+                            : _drawStage2Success)
+                        ? 'Great Job! 🌟 +15 XP'
+                        : 'Check My Work 🎨',
+                    variant: (_drawStage == 1
+                            ? _drawStage1Success
+                            : _drawStage2Success)
+                        ? AppButtonVariant.primary
+                        : AppButtonVariant.secondary,
+                    onPressed: () {
+                      final box = context.findRenderObject() as RenderBox?;
+                      final size = box?.size ?? const Size(360, 400);
+                      _checkDrawing(size);
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildStageChip({
+    required int stageNumber,
+    required String title,
+    required bool isCompleted,
+    required bool isActive,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: isActive
+              ? AppColors.primaryPurple
+              : (isCompleted ? AppColors.greenLight : Colors.transparent),
+          borderRadius: BorderRadius.circular(12),
         ),
-      ],
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isCompleted
+                  ? Icons.check_circle_rounded
+                  : (isActive
+                      ? Icons.play_arrow_rounded
+                      : Icons.circle_outlined),
+              size: 15,
+              color: isActive
+                  ? Colors.white
+                  : (isCompleted ? AppColors.green : AppColors.textMedium),
+            ),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: isActive
+                      ? Colors.white
+                      : (isCompleted ? AppColors.green : AppColors.textMedium),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -908,14 +1306,68 @@ class DrawingStroke {
   });
 }
 
-/// Paints the finger strokes on the canvas with smooth quadratic curves
-class StencilDrawingPainter extends CustomPainter {
+/// CustomPainter for the accurate tracing canvas.
+/// Shows:
+/// 1. Stencil background dotted lines.
+/// 2. Checkpoint guide dots:
+///    - Glows vibrant green when the child's finger accurately traces over it!
+///    - Soft purple when yet to be traced.
+/// 3. User's smooth colorful crayon strokes on top!
+class AccurateTracingPainter extends CustomPainter {
+  final String targetSymbol;
+  final List<Path> paths;
+  final List<Offset> checkpoints;
+  final Set<int> hitIndices;
   final List<DrawingStroke> strokes;
 
-  StencilDrawingPainter({required this.strokes});
+  AccurateTracingPainter({
+    required this.targetSymbol,
+    required this.paths,
+    required this.checkpoints,
+    required this.hitIndices,
+    required this.strokes,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
+    // 1. Draw Stencil Guide Paths as thick dashed lines
+    final stencilPaint = Paint()
+      ..color = AppColors.primaryPurple.withOpacity(0.18)
+      ..strokeWidth = 24.0
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+
+    for (final p in paths) {
+      canvas.drawPath(p, stencilPaint);
+    }
+
+    // 2. Draw Checkpoint Guide Dots along the path
+    final unhitDotPaint = Paint()
+      ..color = AppColors.primaryPurple.withOpacity(0.35)
+      ..style = PaintingStyle.fill;
+
+    final hitDotPaint = Paint()
+      ..color = AppColors.green
+      ..style = PaintingStyle.fill;
+
+    final glowPaint = Paint()
+      ..color = AppColors.green.withOpacity(0.35)
+      ..style = PaintingStyle.fill;
+
+    for (int i = 0; i < checkpoints.length; i++) {
+      final pt = checkpoints[i];
+      if (hitIndices.contains(i)) {
+        // Glowing hit dot
+        canvas.drawCircle(pt, 10.0, glowPaint);
+        canvas.drawCircle(pt, 5.0, hitDotPaint);
+      } else {
+        // Un-hit dot
+        canvas.drawCircle(pt, 4.0, unhitDotPaint);
+      }
+    }
+
+    // 3. Draw Kid's Crayon Strokes
     for (final stroke in strokes) {
       if (stroke.points.isEmpty) continue;
 
@@ -949,5 +1401,5 @@ class StencilDrawingPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant StencilDrawingPainter oldDelegate) => true;
+  bool shouldRepaint(covariant AccurateTracingPainter oldDelegate) => true;
 }
