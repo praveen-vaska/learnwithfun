@@ -33,20 +33,25 @@ abstract class LearningRepository {
   List<NotificationItem> getNotifications();
   void markNotificationRead(String id);
   ParentStats getParentStats();
+  void loadForUser([String? userId]);
 }
 
 class MockLearningRepository implements LearningRepository {
   final LocalStorageService? _storage;
   List<LearningCategory> _categories = List.from(MockData.categories);
-  late final List<Lesson> _lessons;
+  late List<Lesson> _lessons;
   late List<DailyChallengeItem> _challenges;
   late List<RewardBadge> _badges;
   final List<Story> _stories = List.from(MockData.stories);
   List<NotificationItem> _notifications = List.from(MockData.notifications);
 
   MockLearningRepository([this._storage]) {
-    // 1. Initialize all lessons across all categories
-    _lessons = List.from(MockData.allLessons);
+    _hydrateUserData();
+  }
+
+  void _hydrateUserData() {
+    // 1. Initialize all lessons fresh across all categories
+    _lessons = List.from(MockData.allLessons.map((l) => l.copyWith(isCompleted: false)));
 
     // 2. Hydrate completed lessons from persistence if available
     final savedCompleted = _storage?.loadCompletedLessons() ?? {};
@@ -59,7 +64,7 @@ class MockLearningRepository implements LearningRepository {
     }
 
     // 3. Hydrate completed challenges from persistence
-    _challenges = List.from(MockData.dailyChallenges);
+    _challenges = List.from(MockData.dailyChallenges.map((c) => c.copyWith(isCompleted: false)));
     final savedChallenges = _storage?.loadCompletedChallenges() ?? {};
     if (savedChallenges.isNotEmpty) {
       _challenges = _challenges.map((c) {
@@ -68,10 +73,12 @@ class MockLearningRepository implements LearningRepository {
         }
         return c;
       }).toList();
+    } else if (_storage?.currentUserId == 'demo_parent' || _storage?.currentUserId == null) {
+      _challenges = List.from(MockData.dailyChallenges);
     }
 
     // 4. Hydrate unlocked badges from persistence
-    _badges = List.from(MockData.badges);
+    _badges = List.from(MockData.badges.map((b) => b.copyWith(isUnlocked: false)));
     final savedBadges = _storage?.loadUnlockedBadges() ?? {};
     if (savedBadges.isNotEmpty) {
       _badges = _badges.map((b) {
@@ -80,10 +87,20 @@ class MockLearningRepository implements LearningRepository {
         }
         return b;
       }).toList();
+    } else if (_storage?.currentUserId == 'demo_parent' || _storage?.currentUserId == null) {
+      _badges = List.from(MockData.badges);
     }
 
     // 5. Update category completion counts
     _syncCategoryCounts();
+  }
+
+  @override
+  void loadForUser([String? userId]) {
+    if (userId != null) {
+      _storage?.setScopeUser(userId);
+    }
+    _hydrateUserData();
   }
 
   void _syncCategoryCounts() {

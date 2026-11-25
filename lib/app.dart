@@ -51,11 +51,32 @@ class LearnWithFunApp extends StatelessWidget {
             create: (_) => StoriesCubit(learningRepository),
           ),
         ],
-        child: MaterialApp(
-          title: 'LearnWithFun',
-          debugShowCheckedModeBanner: false,
-          theme: AppTheme.lightTheme,
-          home: debugCatalogScreen() ?? const SplashScreen(),
+        child: BlocListener<AuthCubit, AuthState>(
+          listenWhen: (previous, current) => previous != current,
+          listener: (context, authState) {
+            if (authState is Authenticated) {
+              context.read<UserCubit>().loadForUser(authState.user);
+              context.read<LearningCubit>().reloadForUser();
+              context.read<QuizCubit>().reloadForUser();
+              context.read<DailyChallengeCubit>().reloadForUser();
+            } else if (authState is GuestExplorer) {
+              context.read<UserCubit>().loadForGuest();
+              context.read<LearningCubit>().reloadForUser();
+              context.read<QuizCubit>().reloadForUser();
+              context.read<DailyChallengeCubit>().reloadForUser();
+            } else if (authState is Unauthenticated) {
+              context.read<UserCubit>().loadForUser(null);
+              context.read<LearningCubit>().reloadForUser();
+              context.read<QuizCubit>().reloadForUser();
+              context.read<DailyChallengeCubit>().reloadForUser();
+            }
+          },
+          child: MaterialApp(
+            title: 'LearnWithFun',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.lightTheme,
+            home: debugCatalogScreen() ?? const SplashScreen(),
+          ),
         ),
       ),
     );

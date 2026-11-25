@@ -1,5 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../data/models/app_user.dart';
 import '../data/models/child_profile.dart';
 import '../data/repositories/user_repository.dart';
 
@@ -7,6 +8,16 @@ class UserCubit extends Cubit<ChildProfile> {
   final UserRepository _userRepository;
 
   UserCubit(this._userRepository) : super(_userRepository.getProfile());
+
+  void loadForUser(AppUser? user) {
+    _userRepository.loadForUser(user);
+    emit(_userRepository.getProfile());
+  }
+
+  void loadForGuest() {
+    _userRepository.loadForGuest();
+    emit(_userRepository.getProfile());
+  }
 
   void setProfile({
     required String name,

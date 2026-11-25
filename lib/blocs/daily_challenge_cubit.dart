@@ -39,6 +39,10 @@ class DailyChallengeCubit extends Cubit<DailyChallengeState> {
   DailyChallengeCubit(this._repository)
     : super(DailyChallengeState(challenges: _repository.getDailyChallenges()));
 
+  void reloadForUser() {
+    emit(DailyChallengeState(challenges: _repository.getDailyChallenges()));
+  }
+
   void toggleChallenge(String id) {
     _repository.markChallengeCompleted(id);
     emit(state.copyWith(challenges: _repository.getDailyChallenges()));

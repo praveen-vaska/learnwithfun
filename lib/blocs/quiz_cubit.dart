@@ -103,6 +103,19 @@ class QuizCubit extends Cubit<QuizState> {
         ),
       );
 
+  void reloadForUser() {
+    emit(
+      QuizState(
+        currentLevelNumber: 1,
+        unlockedLevel: _repository.getQuizUnlockedLevel(),
+        levelStars: _repository.getQuizStars(),
+        questions:
+            _repository.getQuizLevel(1)?.questions ??
+            _repository.getQuizQuestions(),
+      ),
+    );
+  }
+
   void refreshProgress() {
     emit(
       state.copyWith(

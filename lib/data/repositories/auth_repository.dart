@@ -12,6 +12,7 @@ class AuthException implements Exception {
 
 abstract class AuthRepository {
   Future<AppUser?> getCurrentUser();
+  Future<String?> getAccessToken();
   Future<AppUser> loginWithPhone({
     required String phone,
     required String password,
@@ -106,6 +107,12 @@ class LocalAuthRepository implements AuthRepository {
     return _prefs!;
   }
 
+  String _generateAccessToken(String userId) {
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final randomPart = (userId.hashCode.abs() % 100000).toString().padLeft(5, '0');
+    return 'lwf_tok_${userId}_${timestamp}_$randomPart';
+  }
+
   // Simple, deterministic password hash for local storage
   String _hashPassword(String password) {
     // Simple custom hash string
@@ -139,6 +146,8 @@ class LocalAuthRepository implements AuthRepository {
         phone: '9876543210',
         passwordHash: _hashPassword('password123'),
         createdAt: DateTime.now(),
+        accessToken: 'lwf_tok_demo_parent_showcase_token',
+        tokenType: 'Bearer',
       );
       users['demo_parent'] = demoUser;
       await _saveUsers(users);
@@ -154,13 +163,25 @@ class LocalAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<String?> getAccessToken() async {
+    final user = await getCurrentUser();
+    return user?.accessToken;
+  }
+
+  @override
   Future<AppUser?> getCurrentUser() async {
     final prefs = await _getPrefs();
     final raw = prefs.getString(_keyCurrentSession);
     if (raw == null) return null;
     try {
       final decoded = jsonDecode(raw) as Map<String, dynamic>;
-      return AppUser.fromJson(decoded);
+      var user = AppUser.fromJson(decoded);
+      if (user.accessToken.isEmpty) {
+        user = user.copyWith(accessToken: _generateAccessToken(user.id));
+        await prefs.setString(_keyCurrentSession, jsonEncode(user.toJson()));
+      }
+      _cachedCurrentUser = user;
+      return user;
     } catch (_) {
       return null;
     }
@@ -190,9 +211,18 @@ class LocalAuthRepository implements AuthRepository {
       throw AuthException('Incorrect password. Please try again.');
     }
 
+    final token = _generateAccessToken(matchedUser.id);
+    final authenticatedUser = matchedUser.copyWith(
+      accessToken: token,
+      tokenType: 'Bearer',
+    );
+    users[matchedUser.id] = authenticatedUser;
+    await _saveUsers(users);
+
     final prefs = await _getPrefs();
-    await prefs.setString(_keyCurrentSession, jsonEncode(matchedUser.toJson()));
-    return matchedUser;
+    await prefs.setString(_keyCurrentSession, jsonEncode(authenticatedUser.toJson()));
+    _cachedCurrentUser = authenticatedUser;
+    return authenticatedUser;
   }
 
   @override
@@ -219,9 +249,18 @@ class LocalAuthRepository implements AuthRepository {
       throw AuthException('Incorrect password. Please try again.');
     }
 
+    final token = _generateAccessToken(matchedUser.id);
+    final authenticatedUser = matchedUser.copyWith(
+      accessToken: token,
+      tokenType: 'Bearer',
+    );
+    users[matchedUser.id] = authenticatedUser;
+    await _saveUsers(users);
+
     final prefs = await _getPrefs();
-    await prefs.setString(_keyCurrentSession, jsonEncode(matchedUser.toJson()));
-    return matchedUser;
+    await prefs.setString(_keyCurrentSession, jsonEncode(authenticatedUser.toJson()));
+    _cachedCurrentUser = authenticatedUser;
+    return authenticatedUser;
   }
 
   @override
@@ -254,6 +293,7 @@ class LocalAuthRepository implements AuthRepository {
     }
 
     final userId = 'user_${DateTime.now().millisecondsSinceEpoch}';
+    final token = _generateAccessToken(userId);
     final newUser = AppUser(
       id: userId,
       name: name.trim(),
@@ -261,6 +301,8 @@ class LocalAuthRepository implements AuthRepository {
       phone: cleanPhone,
       passwordHash: _hashPassword(password),
       createdAt: DateTime.now(),
+      accessToken: token,
+      tokenType: 'Bearer',
     );
 
     users[userId] = newUser;
@@ -268,6 +310,7 @@ class LocalAuthRepository implements AuthRepository {
 
     final prefs = await _getPrefs();
     await prefs.setString(_keyCurrentSession, jsonEncode(newUser.toJson()));
+    _cachedCurrentUser = newUser;
     return newUser;
   }
 

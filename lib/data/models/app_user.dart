@@ -8,6 +8,8 @@ class AppUser extends Equatable {
   final String passwordHash;
   final DateTime createdAt;
   final String avatarAsset;
+  final String accessToken;
+  final String tokenType;
 
   const AppUser({
     required this.id,
@@ -17,11 +19,15 @@ class AppUser extends Equatable {
     required this.passwordHash,
     required this.createdAt,
     this.avatarAsset = 'assets/images/avatars/avatar_boy_1.svg',
+    this.accessToken = '',
+    this.tokenType = 'Bearer',
   });
 
   bool get isPhoneUser => phone != null && phone!.isNotEmpty;
   bool get isEmailUser => email != null && email!.isNotEmpty;
   String? get phoneNumber => phone;
+  String get token => accessToken;
+  String get bearerToken => '$tokenType $accessToken'.trim();
 
   Map<String, dynamic> toJson() {
     return {
@@ -32,6 +38,8 @@ class AppUser extends Equatable {
       'passwordHash': passwordHash,
       'createdAt': createdAt.toIso8601String(),
       'avatarAsset': avatarAsset,
+      'accessToken': accessToken,
+      'tokenType': tokenType,
     };
   }
 
@@ -44,6 +52,8 @@ class AppUser extends Equatable {
       passwordHash: json['passwordHash'] as String,
       createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
       avatarAsset: json['avatarAsset'] as String? ?? 'assets/images/avatars/avatar_boy_1.svg',
+      accessToken: json['accessToken'] as String? ?? '',
+      tokenType: json['tokenType'] as String? ?? 'Bearer',
     );
   }
 
@@ -55,6 +65,8 @@ class AppUser extends Equatable {
     String? passwordHash,
     DateTime? createdAt,
     String? avatarAsset,
+    String? accessToken,
+    String? tokenType,
   }) {
     return AppUser(
       id: id ?? this.id,
@@ -64,6 +76,8 @@ class AppUser extends Equatable {
       passwordHash: passwordHash ?? this.passwordHash,
       createdAt: createdAt ?? this.createdAt,
       avatarAsset: avatarAsset ?? this.avatarAsset,
+      accessToken: accessToken ?? this.accessToken,
+      tokenType: tokenType ?? this.tokenType,
     );
   }
 
@@ -76,5 +90,7 @@ class AppUser extends Equatable {
     passwordHash,
     createdAt,
     avatarAsset,
+    accessToken,
+    tokenType,
   ];
 }

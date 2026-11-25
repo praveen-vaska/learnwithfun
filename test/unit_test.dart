@@ -887,4 +887,178 @@ void main() {
       expect(SpeechMatcher.isMatch(rawWords: 'cow says moo', stage: 2, stage1Symbol: 'Cow', stage2Word: 'Moo', categoryId: 'animals'), true);
     });
   });
+
+  group('User Isolation, Access Tokens & Per-User Profiles', () {
+    test('Registration and login generate and persist unique access tokens', () async {
+      final storage = LocalStorageService();
+      await storage.init();
+      final authRepo = LocalAuthRepository(storage.prefs);
+
+      // Register new user Rohan with a new phone number
+      final user = await authRepo.register(
+        name: 'Rohan Sharma',
+        phone: '9988776655',
+        password: 'password123',
+      );
+
+      expect(user.name, 'Rohan Sharma');
+      expect(user.accessToken, isNotNull);
+      expect(user.accessToken, startsWith('lwf_tok_'));
+      expect(user.tokenType, 'Bearer');
+      expect(user.bearerToken, startsWith('Bearer lwf_tok_'));
+
+      // Token is also persisted in storage and accessible via authRepo
+      final token = await authRepo.getAccessToken();
+      expect(token, user.accessToken);
+
+      // Log out
+      await authRepo.logout();
+      expect(await authRepo.getAccessToken(), isNull);
+
+      // Log back in
+      final loggedInUser = await authRepo.loginWithPhone(
+        phone: '9988776655',
+        password: 'password123',
+      );
+      expect(loggedInUser.accessToken, isNotNull);
+      expect(loggedInUser.accessToken, startsWith('lwf_tok_'));
+    });
+
+    test('New registered user gets isolated fresh profile and clean progress', () async {
+      final storage = LocalStorageService();
+      await storage.init();
+      final authRepo = LocalAuthRepository(storage.prefs);
+      final userRepo = MockUserRepository(storage);
+      final learningRepo = MockLearningRepository(storage);
+
+      // Register Priya
+      final priya = await authRepo.register(
+        name: 'Priya',
+        phone: '9123456789',
+        password: 'password123',
+      );
+
+      // Scope storage and load user profile & learning repo
+      storage.setScopeUser(priya.id);
+      userRepo.loadForUser(priya);
+      learningRepo.loadForUser(priya.id);
+
+      final priyaProfile = userRepo.getProfile();
+      // Priya's profile must show her registered name, Level 1, 0 XP, 0 completed lessons
+      expect(priyaProfile.name, 'Priya');
+      expect(priyaProfile.level, 1);
+      expect(priyaProfile.currentXp, 0);
+      expect(priyaProfile.completedLessonsCount, 0);
+      expect(priyaProfile.stars, 0);
+
+      // All lessons for Priya must start uncompleted
+      final abcLessons = learningRepo.getLessons('abc');
+      expect(abcLessons.every((l) => !l.isCompleted), true);
+
+      // Priya completes lesson A
+      learningRepo.markLessonCompleted('abc_a');
+      expect(learningRepo.getLessons('abc').first.isCompleted, true);
+
+      userRepo.addXp(50);
+      expect(userRepo.getProfile().currentXp, 50);
+
+      // Now switch back to demo user
+      storage.setScopeUser('demo_parent');
+      userRepo.loadForUser(null);
+      learningRepo.loadForUser('demo_parent');
+
+      // Demo user profile must remain Arab with Level 4 / 450 XP
+      final demoProfile = userRepo.getProfile();
+      expect(demoProfile.name, 'Arab');
+      expect(demoProfile.level, 4);
+      expect(demoProfile.currentXp, 450);
+
+      // Now switch back to Priya
+      storage.setScopeUser(priya.id);
+      userRepo.loadForUser(priya);
+      learningRepo.loadForUser(priya.id);
+
+      // Priya's 50 XP and completed lesson A must be intact
+      final reloadedPriyaProfile = userRepo.getProfile();
+      expect(reloadedPriyaProfile.name, 'Priya');
+      expect(reloadedPriyaProfile.currentXp, 50);
+      expect(learningRepo.getLessons('abc').first.isCompleted, true);
+    });
+
+    test('Two distinct registered users have complete data isolation', () async {
+      final storage = LocalStorageService();
+      await storage.init();
+      final authRepo = LocalAuthRepository(storage.prefs);
+      final userRepo = MockUserRepository(storage);
+      final learningRepo = MockLearningRepository(storage);
+
+      // Register User 1: Aarav
+      final aarav = await authRepo.register(
+        name: 'Aarav',
+        phone: '7778889990',
+        password: 'password123',
+      );
+
+      // Register User 2: Ananya
+      final ananya = await authRepo.register(
+        name: 'Ananya',
+        phone: '8889990001',
+        password: 'password123',
+      );
+
+      // Verify unique access tokens
+      expect(aarav.accessToken, isNot(equals(ananya.accessToken)));
+
+      // Set Aarav's progress
+      storage.setScopeUser(aarav.id);
+      userRepo.loadForUser(aarav);
+      learningRepo.loadForUser(aarav.id);
+      userRepo.addXp(120);
+      learningRepo.markLessonCompleted('abc_a');
+      learningRepo.markLessonCompleted('abc_b');
+
+      expect(userRepo.getProfile().name, 'Aarav');
+      expect(userRepo.getProfile().currentXp, 120);
+      expect(learningRepo.getLessons('abc').where((l) => l.isCompleted).length, 2);
+
+      // Switch to Ananya
+      storage.setScopeUser(ananya.id);
+      userRepo.loadForUser(ananya);
+      learningRepo.loadForUser(ananya.id);
+
+      // Ananya must have completely clean state (0 XP, 0 completed lessons)
+      expect(userRepo.getProfile().name, 'Ananya');
+      expect(userRepo.getProfile().currentXp, 0);
+      expect(userRepo.getProfile().level, 1);
+      expect(learningRepo.getLessons('abc').where((l) => l.isCompleted).length, 0);
+
+      // Switch back to Aarav
+      storage.setScopeUser(aarav.id);
+      userRepo.loadForUser(aarav);
+      learningRepo.loadForUser(aarav.id);
+
+      // Aarav still has his 120 XP and 2 completed lessons
+      expect(userRepo.getProfile().name, 'Aarav');
+      expect(userRepo.getProfile().currentXp, 120);
+      expect(learningRepo.getLessons('abc').where((l) => l.isCompleted).length, 2);
+    });
+
+    test('Guest explorer starts with isolated guest profile and clean stats', () async {
+      final storage = LocalStorageService();
+      await storage.init();
+      final userRepo = MockUserRepository(storage);
+      final learningRepo = MockLearningRepository(storage);
+
+      storage.setScopeUser(null);
+      userRepo.loadForGuest();
+      learningRepo.loadForUser(null);
+
+      final guestProfile = userRepo.getProfile();
+      expect(guestProfile.name, 'Guest Explorer');
+      expect(guestProfile.level, 1);
+      expect(guestProfile.currentXp, 0);
+      expect(guestProfile.completedLessonsCount, 0);
+      expect(learningRepo.getLessons('abc').every((l) => !l.isCompleted), true);
+    });
+  });
 }

@@ -58,6 +58,19 @@ class LearningCubit extends Cubit<LearningState> {
         ),
       );
 
+  void reloadForUser() {
+    _repository.loadForUser();
+    emit(
+      LearningState(
+        categories: _repository.getCategories(),
+        currentLessons: _repository.getLessons(state.selectedCategoryId),
+        selectedCategoryId: state.selectedCategoryId,
+        activeLessonIndex: 0,
+        isAudioPlaying: false,
+      ),
+    );
+  }
+
   void selectCategory(String categoryId) {
     final lessons = _repository.getLessons(categoryId);
     emit(
