@@ -411,15 +411,14 @@ class TracingGuide {
     final word = clean.toUpperCase();
     final letterCount = word.length;
 
-    // Generous spacing between letters so children can trace each letter cleanly
-    final maxAvailableWidth = bounds.width * 0.92;
-    final maxAvailableHeight = bounds.height * 0.75;
+    // Generous spacing between letters so children can trace each letter cleanly without strokes touching
+    final maxAvailableWidth = bounds.width * 0.94;
+    final maxAvailableHeight = bounds.height * 0.65;
 
-    // Proportional letter width and gap
-    // Ideal ratio: letterWidth = 0.65 * height, gap = 0.30 * letterWidth
+    // Proportional letter width and wide gap between letters (72% gap!)
     double letterHeight = maxAvailableHeight;
-    double letterWidth = letterHeight * 0.60;
-    double gap = letterWidth * 0.28;
+    double letterWidth = letterHeight * 0.50;
+    double gap = letterWidth * 0.72;
 
     double totalWordWidth = (letterCount * letterWidth) + ((letterCount - 1) * gap);
 
@@ -531,12 +530,12 @@ class TracingGuide {
       final word = clean.toUpperCase();
       final letterCount = word.length;
 
-      final maxAvailableWidth = bounds.width * 0.92;
-      final maxAvailableHeight = bounds.height * 0.75;
+      final maxAvailableWidth = bounds.width * 0.94;
+      final maxAvailableHeight = bounds.height * 0.65;
 
       double letterHeight = maxAvailableHeight;
-      double letterWidth = letterHeight * 0.60;
-      double gap = letterWidth * 0.28;
+      double letterWidth = letterHeight * 0.50;
+      double gap = letterWidth * 0.72;
 
       double totalWordWidth = (letterCount * letterWidth) + ((letterCount - 1) * gap);
       if (totalWordWidth > maxAvailableWidth) {

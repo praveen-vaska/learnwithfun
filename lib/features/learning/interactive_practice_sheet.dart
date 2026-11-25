@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -14,6 +15,235 @@ import '../../core/widgets/app_button.dart';
 import '../../core/widgets/confetti_overlay.dart';
 import '../../data/models/lesson.dart';
 import 'tracing_guide.dart';
+
+/// Duolingo-style speech evaluator with phonetic tolerance and fuzzy auto-correction
+class SpeechMatcher {
+  SpeechMatcher._();
+
+  static const Map<String, List<String>> letterPhonetics = {
+    'A': [
+      'a',
+      'ay',
+      'ah',
+      'aye',
+      'eh',
+      'ei',
+      'ey',
+      'hey',
+      'hay',
+      'eight',
+      'eye',
+      'i',
+      'ha',
+      'ya',
+      'uh',
+      'a4',
+      'ace',
+      'apple',
+      'ate',
+      'e',
+      'ai',
+    ],
+    'B': ['b', 'be', 'bee', 'bea', 'bi', 'bay', 'boy', 'ball', 'me', 'we', 'd', 'p'],
+    'C': ['c', 'see', 'sea', 'cee', 'si', 'ci', 'she', 'cat'],
+    'D': ['d', 'dee', 'di', 'de', 'the', 'dog'],
+    'E': ['e', 'ee', 'ea', 'he', 'elephant', 'egg', 'ye'],
+    'F': ['f', 'ef', 'eff', 'af', 'fish'],
+    'G': ['g', 'gee', 'jee', 'ji', 'grapes', 'ghee'],
+    'H': ['h', 'aitch', 'ach', 'ha', 'he', 'eich', 'hat', 'horse'],
+    'I': ['i', 'eye', 'ai', 'ay', 'aye', 'my', 'hi', 'ice cream', 'ice'],
+    'J': ['j', 'jay', 'je', 'jai', 'jug', 'juice'],
+    'K': ['k', 'kay', 'ka', 'ca', 'kite'],
+    'L': ['l', 'el', 'ell', 'al', 'lion'],
+    'M': ['m', 'em', 'am', 'ma', 'mango', 'monkey'],
+    'N': ['n', 'en', 'an', 'na', 'and', 'nest', 'nose', 'in'],
+    'O': ['o', 'oh', 'ow', 'orange', 'owl', 'au'],
+    'P': ['p', 'pee', 'pi', 'pe', 'parrot', 'pen'],
+    'Q': ['q', 'cue', 'queue', 'kew', 'ku', 'queen'],
+    'R': ['r', 'ar', 'are', 'our', 'or', 'rabbit', 'rose'],
+    'S': ['s', 'es', 'ess', 'is', 'sun', 'star'],
+    'T': ['t', 'tee', 'tea', 'ti', 'tiger', 'tree'],
+    'U': ['u', 'you', 'yu', 'oo', 'yoo', 'umbrella'],
+    'V': ['v', 'vee', 'we', 'wi', 'van', 'violin'],
+    'W': ['w', 'double u', 'double you', 'double-u', 'watch'],
+    'X': ['x', 'ex', 'axe', 'ax', 'xylophone'],
+    'Y': ['y', 'why', 'wai', 'vai', 'yak', 'yellow'],
+    'Z': ['z', 'zed', 'zee', 'ze', 'zebra', 'zoo'],
+  };
+
+  static const Map<String, List<String>> numberPhonetics = {
+    '1': ['1', 'one', 'won', 'wan', 'first', 'number 1', 'number one'],
+    '2': ['2', 'two', 'to', 'too', 'tu', 'second', 'number 2', 'number two'],
+    '3': ['3', 'three', 'tree', 'free', 'third', 'number 3', 'number three'],
+    '4': ['4', 'four', 'for', 'fore', 'number 4', 'number four'],
+    '5': ['5', 'five', 'fiv', 'number 5', 'number five'],
+    '6': ['6', 'six', 'siks', 'number 6', 'number six'],
+    '7': ['7', 'seven', 'sevn', 'number 7', 'number seven'],
+    '8': ['8', 'eight', 'ate', 'ait', 'number 8', 'number eight'],
+    '9': ['9', 'nine', 'nain', 'number 9', 'number nine'],
+    '10': ['10', 'ten', 'number 10', 'number ten'],
+  };
+
+  /// Robust, fuzzy-tolerant matching for kids' speech recognition
+  static bool isMatch({
+    required String rawWords,
+    required int stage,
+    required String stage1Symbol,
+    required String stage2Word,
+    required String categoryId,
+  }) {
+    if (rawWords.trim().isEmpty) return false;
+
+    // Clean transcription: lower-case, strip punctuation
+    final clean = rawWords
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s]'), ' ')
+        .trim();
+    if (clean.isEmpty) return false;
+
+    // Normalize homophones (e.g. speech recognizer hearing '4' or 'four' for 'for')
+    final normalized = clean
+        .replaceAll(RegExp(r'\b4\b'), 'for')
+        .replaceAll(RegExp(r'\bfour\b'), 'for');
+
+    final tokens = clean.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+    final normTokens = normalized.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+
+    final s1 = stage1Symbol.toLowerCase();
+    final s2 = stage2Word.toLowerCase();
+    final cat = categoryId;
+
+    if (stage == 1) {
+      // 1. Eager match: If child enthusiastically said the full word or "A for Apple" in Step 1, accept immediately!
+      if (clean.contains(s2) ||
+          normalized.contains('$s1 for $s2') ||
+          normalized.contains('$s1 for') ||
+          clean.contains('for $s2')) {
+        return true;
+      }
+
+      if (cat == 'abc') {
+        final symbol = stage1Symbol.toUpperCase();
+        final variants = letterPhonetics[symbol] ?? [s1];
+
+        // Direct token or phrase match
+        if (variants.any((v) =>
+            clean == v ||
+            tokens.contains(v) ||
+            normTokens.contains(v) ||
+            clean.startsWith('$v ') ||
+            clean.endsWith(' $v') ||
+            clean.contains(' $v '))) {
+          return true;
+        }
+
+        // Single short sound starting with the letter (e.g. "ay", "app", "ah")
+        if (clean.startsWith(s1) && clean.length <= 4) {
+          return true;
+        }
+
+        // Fuzzy token match against the concept word (e.g. child said "apple" or "apel")
+        if (hasFuzzyTokenMatch(tokens, s2, maxDistance: 2)) {
+          return true;
+        }
+
+        return false;
+      } else if (cat == '123') {
+        final variants = numberPhonetics[stage1Symbol] ?? [s1];
+        if (variants.any((v) =>
+            clean == v ||
+            tokens.contains(v) ||
+            normTokens.contains(v) ||
+            clean.startsWith('$v ') ||
+            clean.endsWith(' $v') ||
+            clean.contains(' $v '))) {
+          return true;
+        }
+        if (hasFuzzyTokenMatch(tokens, s2, maxDistance: 2)) {
+          return true;
+        }
+        return false;
+      } else {
+        // Animals, shapes, etc.
+        if (clean.contains(s1) || tokens.contains(s1)) return true;
+        if (hasFuzzyTokenMatch(tokens, s1, maxDistance: 2)) return true;
+        return false;
+      }
+    } else {
+      // Stage 2: Association (e.g. "Apple", "A for Apple", "1, One", "Cow says Moo")
+      // 1. Exact or partial match on the target concept word
+      if (clean.contains(s2) || normalized.contains(s2)) {
+        return true;
+      }
+
+      // 2. Contains letter symbol + association word ('for', '4', 'is', 'says')
+      if ((clean.contains(s1) || normTokens.contains(s1)) &&
+          (clean.contains('for') ||
+              normalized.contains('for') ||
+              clean.contains('is') ||
+              clean.contains('says'))) {
+        return true;
+      }
+
+      // 3. Child said "A Apple" or "Letter Apple"
+      if (tokens.contains(s1) && tokens.any((t) => t.startsWith(s2[0]))) {
+        return true;
+      }
+
+      // 4. Fuzzy Levenshtein token match for the target word (handles toddler lisp/mispronunciation)
+      if (hasFuzzyTokenMatch(tokens, s2, maxDistance: 2)) {
+        return true;
+      }
+
+      // 5. Special handling for animals sounds (e.g. "Moo")
+      if (cat == 'animals') {
+        final soundToken = s2.replaceAll('!', '').trim().toLowerCase();
+        if (clean.contains(soundToken) ||
+            hasFuzzyTokenMatch(tokens, soundToken, maxDistance: 2)) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+  }
+
+  static bool hasFuzzyTokenMatch(
+    List<String> tokens,
+    String target, {
+    required int maxDistance,
+  }) {
+    if (target.isEmpty) return false;
+    for (final token in tokens) {
+      if (token == target) return true;
+      if (token.length >= 3 && target.length >= 3) {
+        if (levenshtein(token, target) <= maxDistance) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  static int levenshtein(String s, String t) {
+    if (s == t) return 0;
+    if (s.isEmpty) return t.length;
+    if (t.isEmpty) return s.length;
+    List<int> v0 = List<int>.generate(t.length + 1, (i) => i);
+    List<int> v1 = List<int>.filled(t.length + 1, 0);
+    for (int i = 0; i < s.length; i++) {
+      v1[0] = i + 1;
+      for (int j = 0; j < t.length; j++) {
+        final cost = (s[i] == t[j]) ? 0 : 1;
+        v1[j + 1] = min(v1[j] + 1, min(v0[j + 1] + 1, v0[j] + cost));
+      }
+      for (int j = 0; j <= t.length; j++) {
+        v0[j] = v1[j];
+      }
+    }
+    return v0[t.length];
+  }
+}
 
 /// Interactive Practice Sheet for Kids (Duolingo Style)
 /// Features:
@@ -87,49 +317,6 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
     AppColors.skyBlue,
     AppColors.pinkDark,
   ];
-
-  // Phonetic & common transcription variants for English letters
-  static const Map<String, List<String>> _letterPhonetics = {
-    'A': ['a', 'ay', 'ah', 'aye', 'eh', 'ei', 'hey', 'apple', 'hay'],
-    'B': ['b', 'be', 'bee', 'bea', 'ball', 'boy'],
-    'C': ['c', 'see', 'sea', 'cee', 'si', 'cat'],
-    'D': ['d', 'dee', 'di', 'dog'],
-    'E': ['e', 'ee', 'ea', 'elephant', 'egg'],
-    'F': ['f', 'ef', 'eff', 'fish'],
-    'G': ['g', 'gee', 'jee', 'ji', 'grapes'],
-    'H': ['h', 'aitch', 'ach', 'ha', 'he', 'hat', 'horse'],
-    'I': ['i', 'eye', 'ai', 'ay', 'aye', 'ice cream', 'ice'],
-    'J': ['j', 'jay', 'je', 'jug', 'juice'],
-    'K': ['k', 'kay', 'ka', 'kite'],
-    'L': ['l', 'el', 'ell', 'lion'],
-    'M': ['m', 'em', 'ma', 'mango', 'monkey'],
-    'N': ['n', 'en', 'na', 'nest', 'nose'],
-    'O': ['o', 'oh', 'ow', 'orange', 'owl'],
-    'P': ['p', 'pee', 'pi', 'parrot', 'pen'],
-    'Q': ['q', 'cue', 'queue', 'kew', 'queen'],
-    'R': ['r', 'ar', 'are', 'our', 'rabbit', 'rose'],
-    'S': ['s', 'es', 'ess', 'sun', 'star'],
-    'T': ['t', 'tee', 'tea', 'ti', 'tiger', 'tree'],
-    'U': ['u', 'you', 'yu', 'oo', 'umbrella'],
-    'V': ['v', 'vee', 'we', 'van', 'violin'],
-    'W': ['w', 'double u', 'double you', 'double-u', 'watch'],
-    'X': ['x', 'ex', 'axe', 'xylophone'],
-    'Y': ['y', 'why', 'wai', 'yak', 'yellow'],
-    'Z': ['z', 'zed', 'zee', 'ze', 'zebra', 'zoo'],
-  };
-
-  static const Map<String, List<String>> _numberPhonetics = {
-    '1': ['1', 'one', 'won', 'first', 'number 1', 'number one'],
-    '2': ['2', 'two', 'to', 'too', 'second', 'number 2', 'number two'],
-    '3': ['3', 'three', 'tree', 'third', 'number 3', 'number three'],
-    '4': ['4', 'four', 'for', 'fore', 'number 4', 'number four'],
-    '5': ['5', 'five', 'number 5', 'number five'],
-    '6': ['6', 'six', 'number 6', 'number six'],
-    '7': ['7', 'seven', 'number 7', 'number seven'],
-    '8': ['8', 'eight', 'ate', 'number 8', 'number eight'],
-    '9': ['9', 'nine', 'number 9', 'number nine'],
-    '10': ['10', 'ten', 'number 10', 'number ten'],
-  };
 
   @override
   void initState() {
@@ -240,8 +427,9 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
       if (!mounted) return;
       AppAudioService.instance.speak(_currentVoicePrompt);
 
-      // Automatically activate microphone listening right after the TTS prompt finishes
-      _autoListenTimer = Timer(const Duration(milliseconds: 1400), () {
+      // Give ample time for TTS speech to finish naturally before listening
+      final delayMs = _voiceStage == 1 ? 2200 : 3200;
+      _autoListenTimer = Timer(Duration(milliseconds: delayMs), () {
         if (!mounted || _currentTab != PracticeTab.voice) return;
         if (!_isListening &&
             ((_voiceStage == 1 && !_voiceStage1Success) ||
@@ -261,6 +449,7 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
       _speech = stt.SpeechToText();
       final available = await _speech!.initialize(
         onError: (SpeechRecognitionError error) {
+          debugPrint('SpeechRecognizer onError: ${error.errorMsg}');
           if (mounted) {
             setState(() {
               _isListening = false;
@@ -268,6 +457,7 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
           }
         },
         onStatus: (String status) {
+          debugPrint('SpeechRecognizer onStatus: $status');
           if (mounted) {
             setState(() {
               _isListening = (status == 'listening');
@@ -287,8 +477,19 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
 
   Future<void> _startListening() async {
     AppAudioService.instance.playTapSound();
+    // Stop any ongoing TTS audio so microphone input is crystal clear
+    AppAudioService.instance.stop();
+
     if (_speech == null || !_speechAvailable) {
-      // Simulation / Toddler fallback
+      if (_speech != null) {
+        try {
+          _speechAvailable = await _speech!.initialize();
+        } catch (_) {}
+      }
+    }
+
+    if (_speech == null || !_speechAvailable) {
+      // Simulation / Toddler fallback if no speech engine is available
       setState(() {
         _isListening = true;
         _recognizedWords = 'Listening to your voice...';
@@ -318,14 +519,18 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
           });
           _evaluateSpeech(words);
         },
-        listenFor: const Duration(seconds: 15),
-        pauseFor: const Duration(seconds: 3),
-        localeId: 'en_US',
+        listenFor: const Duration(seconds: 30),
+        pauseFor: const Duration(seconds: 8),
         partialResults: true,
         cancelOnError: false,
       );
     } catch (e) {
       debugPrint('Speech listening error: $e');
+      if (mounted) {
+        setState(() {
+          _isListening = false;
+        });
+      }
     }
   }
 
@@ -340,73 +545,38 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
     }
   }
 
-  /// Evaluates speech strictly and triggers automatic success when matched
+  /// Evaluates speech with Duolingo-style auto-correction and triggers automatic success
   void _evaluateSpeech(String rawWords) {
     if (rawWords.trim().isEmpty) return;
 
-    // Clean transcription: lower-case, strip punctuation
-    String clean = rawWords.toLowerCase().replaceAll(RegExp(r'[^a-z0-9\s]'), ' ').trim();
-    // Strip common filler/prompt prefixes if child repeats the prompt ("say a", "letter a")
-    for (final prefix in ['say ', 'letter ', 'number ', 'it is ', "it's "]) {
-      if (clean.startsWith(prefix)) {
-        clean = clean.substring(prefix.length).trim();
-      }
-    }
-    if (clean.isEmpty) return;
+    final isMatch = _isSpeechMatch(rawWords);
 
-    if (_voiceStage == 1) {
-      final symbol = _stage1Symbol.toUpperCase();
-      bool isMatch = false;
-
-      if (widget.lesson.categoryId == 'abc') {
-        // Alphabet matching: check exact letter or phonetic variants
-        final validVariants = _letterPhonetics[symbol] ?? [symbol.toLowerCase()];
-        final tokens = clean.split(RegExp(r'\s+'));
-        isMatch = validVariants.any(
-          (v) => clean == v || tokens.contains(v) || clean.startsWith('$v ') || clean.endsWith(' $v'),
-        );
-      } else if (widget.lesson.categoryId == '123') {
-        // Number matching
-        final validVariants = _numberPhonetics[symbol] ?? [symbol.toLowerCase()];
-        final tokens = clean.split(RegExp(r'\s+'));
-        isMatch = validVariants.any(
-          (v) => clean == v || tokens.contains(v) || clean.startsWith('$v ') || clean.endsWith(' $v'),
-        );
-      } else {
-        // Words (animals, shapes, etc.)
-        final target = _stage1Symbol.toLowerCase();
-        isMatch = clean.contains(target);
-      }
-
-      if (isMatch) {
-        if (!_voiceStage1Success) {
-          _onVoiceSuccess(rawWords);
-        }
-      } else {
-        // Give helpful live prompt if speech was heard but did not match
-        setState(() {
-          _voiceFeedback = 'Heard "$rawWords". Try saying "$_stage1Symbol"! 🎙️';
-        });
+    if (isMatch) {
+      if (_voiceStage == 1 && !_voiceStage1Success) {
+        _onVoiceSuccess(rawWords);
+      } else if (_voiceStage == 2 && !_voiceStage2Success) {
+        _onVoiceSuccess(rawWords);
       }
     } else {
-      // Stage 2: Association (e.g. "Apple" or "A for Apple")
-      final word = _stage2Word.toLowerCase();
-      final letter = _stage1Symbol.toLowerCase();
-
-      final isMatch = clean.contains(word) ||
-          (clean.contains(letter) && (clean.contains('for') || clean.contains('is') || clean.contains(word)));
-
-      if (isMatch) {
-        if (!_voiceStage2Success) {
-          _onVoiceSuccess(rawWords);
-        }
-      } else {
-        setState(() {
-          _voiceFeedback =
-              'Heard "$rawWords". Try saying "$_stage1Symbol for $_stage2Word"! 🎙️';
-        });
-      }
+      // Helpful encouragement if speech was heard but did not match
+      final hint = _voiceStage == 1
+          ? _stage1Symbol
+          : '$_stage1Symbol for $_stage2Word';
+      setState(() {
+        _voiceFeedback = 'Heard "$rawWords". Try saying "$hint"! 🎙️';
+      });
     }
+  }
+
+  /// Robust, fuzzy-tolerant matching for kids' speech recognition
+  bool _isSpeechMatch(String rawWords) {
+    return SpeechMatcher.isMatch(
+      rawWords: rawWords,
+      stage: _voiceStage,
+      stage1Symbol: _stage1Symbol,
+      stage2Word: _stage2Word,
+      categoryId: widget.lesson.categoryId,
+    );
   }
 
   void _onVoiceSuccess(String spokenText) {

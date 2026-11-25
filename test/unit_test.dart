@@ -17,6 +17,7 @@ import 'package:learnwithfun/core/utils/auth_validators.dart';
 import 'package:learnwithfun/data/repositories/auth_repository.dart';
 import 'package:learnwithfun/blocs/auth_cubit.dart';
 import 'package:learnwithfun/features/learning/tracing_guide.dart';
+import 'package:learnwithfun/features/learning/interactive_practice_sheet.dart';
 
 void main() {
   setUp(() {
@@ -808,6 +809,82 @@ void main() {
 
       expect(eval.isSuccess, true);
       expect(eval.coverage, greaterThanOrEqualTo(0.68));
+    });
+
+    test('TracingGuide provides generous gap between letters in a word', () {
+      const bounds = Rect.fromLTWH(0, 0, 500, 200);
+      final targetData = TracingGuide.getTargetData('APPLE', bounds);
+      expect(targetData.componentCheckpoints.length, 5);
+
+      // Verify that the X coordinates of consecutive letters have clear gaps
+      for (int i = 0; i < targetData.componentCheckpoints.length - 1; i++) {
+        final currentLetterPts = targetData.componentCheckpoints[i];
+        final nextLetterPts = targetData.componentCheckpoints[i + 1];
+
+        final currentMaxX = currentLetterPts.map((p) => p.dx).reduce((a, b) => a > b ? a : b);
+        final nextMinX = nextLetterPts.map((p) => p.dx).reduce((a, b) => a < b ? a : b);
+
+        // Gap between the rightmost point of current letter and leftmost point of next letter
+        final gap = nextMinX - currentMaxX;
+        expect(gap, greaterThan(15.0), reason: 'Gap between letter $i and ${i + 1} must be wide and clear');
+      }
+    });
+
+    test('SpeechMatcher auto-evaluates and accepts letter A and word variants with auto-correct', () {
+      // Stage 1: Say "A"
+      // Exact and common speech-to-text / accent variations
+      expect(SpeechMatcher.isMatch(rawWords: 'A', stage: 1, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), true);
+      expect(SpeechMatcher.isMatch(rawWords: 'a', stage: 1, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), true);
+      expect(SpeechMatcher.isMatch(rawWords: 'ay', stage: 1, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), true);
+      expect(SpeechMatcher.isMatch(rawWords: 'ah', stage: 1, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), true);
+      expect(SpeechMatcher.isMatch(rawWords: 'hey', stage: 1, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), true);
+      expect(SpeechMatcher.isMatch(rawWords: 'eight', stage: 1, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), true);
+      expect(SpeechMatcher.isMatch(rawWords: 'say a', stage: 1, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), true);
+      expect(SpeechMatcher.isMatch(rawWords: 'letter a', stage: 1, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), true);
+
+      // Eager acceptance on Stage 1 when child says association right away:
+      expect(SpeechMatcher.isMatch(rawWords: 'a for apple', stage: 1, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), true);
+      expect(SpeechMatcher.isMatch(rawWords: 'A for Apple', stage: 1, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), true);
+      expect(SpeechMatcher.isMatch(rawWords: 'a 4 apple', stage: 1, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), true);
+      expect(SpeechMatcher.isMatch(rawWords: 'a four apple', stage: 1, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), true);
+      expect(SpeechMatcher.isMatch(rawWords: 'apple', stage: 1, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), true);
+
+      // Wrong letter must be rejected
+      expect(SpeechMatcher.isMatch(rawWords: 'b', stage: 1, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), false);
+      expect(SpeechMatcher.isMatch(rawWords: 'cat', stage: 1, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), false);
+    });
+
+    test('SpeechMatcher auto-evaluates and accepts Stage 2 A for Apple with fuzzy tolerance', () {
+      // Stage 2: Say "A for Apple"
+      expect(SpeechMatcher.isMatch(rawWords: 'apple', stage: 2, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), true);
+      expect(SpeechMatcher.isMatch(rawWords: 'a for apple', stage: 2, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), true);
+      expect(SpeechMatcher.isMatch(rawWords: 'A for Apple', stage: 2, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), true);
+      expect(SpeechMatcher.isMatch(rawWords: 'a 4 apple', stage: 2, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), true);
+      expect(SpeechMatcher.isMatch(rawWords: 'a four apple', stage: 2, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), true);
+      expect(SpeechMatcher.isMatch(rawWords: 'for apple', stage: 2, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), true);
+      expect(SpeechMatcher.isMatch(rawWords: 'a apple', stage: 2, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), true);
+
+      // Fuzzy toddler pronunciation (Levenshtein distance <= 2)
+      expect(SpeechMatcher.isMatch(rawWords: 'apel', stage: 2, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), true);
+      expect(SpeechMatcher.isMatch(rawWords: 'appl', stage: 2, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), true);
+      expect(SpeechMatcher.isMatch(rawWords: 'epple', stage: 2, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), true);
+
+      // Wrong concept must be rejected
+      expect(SpeechMatcher.isMatch(rawWords: 'banana', stage: 2, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), false);
+      expect(SpeechMatcher.isMatch(rawWords: 'dog', stage: 2, stage1Symbol: 'A', stage2Word: 'Apple', categoryId: 'abc'), false);
+    });
+
+    test('SpeechMatcher handles numbers and animal sounds accurately', () {
+      // Numbers
+      expect(SpeechMatcher.isMatch(rawWords: 'one', stage: 1, stage1Symbol: '1', stage2Word: 'One', categoryId: '123'), true);
+      expect(SpeechMatcher.isMatch(rawWords: '1', stage: 1, stage1Symbol: '1', stage2Word: 'One', categoryId: '123'), true);
+      expect(SpeechMatcher.isMatch(rawWords: '1 one', stage: 2, stage1Symbol: '1', stage2Word: 'One', categoryId: '123'), true);
+
+      // Animals
+      expect(SpeechMatcher.isMatch(rawWords: 'cow', stage: 1, stage1Symbol: 'Cow', stage2Word: 'Moo', categoryId: 'animals'), true);
+      expect(SpeechMatcher.isMatch(rawWords: 'moo', stage: 2, stage1Symbol: 'Cow', stage2Word: 'Moo', categoryId: 'animals'), true);
+      expect(SpeechMatcher.isMatch(rawWords: 'mooo', stage: 2, stage1Symbol: 'Cow', stage2Word: 'Moo', categoryId: 'animals'), true);
+      expect(SpeechMatcher.isMatch(rawWords: 'cow says moo', stage: 2, stage1Symbol: 'Cow', stage2Word: 'Moo', categoryId: 'animals'), true);
     });
   });
 }
