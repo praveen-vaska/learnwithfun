@@ -1,4 +1,5 @@
 import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 /// Helper class that creates stencil paths and checkpoint dots for tracing practice.
@@ -14,16 +15,32 @@ class TracingGuide {
     switch (c) {
       case 'A':
         // Left diagonal
-        paths.add(Path()..moveTo(0.5, 0.08)..lineTo(0.12, 0.92));
+        paths.add(
+          Path()
+            ..moveTo(0.5, 0.08)
+            ..lineTo(0.12, 0.92),
+        );
         // Right diagonal
-        paths.add(Path()..moveTo(0.5, 0.08)..lineTo(0.88, 0.92));
+        paths.add(
+          Path()
+            ..moveTo(0.5, 0.08)
+            ..lineTo(0.88, 0.92),
+        );
         // Crossbar
-        paths.add(Path()..moveTo(0.26, 0.60)..lineTo(0.74, 0.60));
+        paths.add(
+          Path()
+            ..moveTo(0.26, 0.60)
+            ..lineTo(0.74, 0.60),
+        );
         break;
 
       case 'B':
         // Vertical spine
-        paths.add(Path()..moveTo(0.20, 0.08)..lineTo(0.20, 0.92));
+        paths.add(
+          Path()
+            ..moveTo(0.20, 0.08)
+            ..lineTo(0.20, 0.92),
+        );
         // Top loop
         paths.add(
           Path()
@@ -48,7 +65,11 @@ class TracingGuide {
         break;
 
       case 'D':
-        paths.add(Path()..moveTo(0.20, 0.08)..lineTo(0.20, 0.92));
+        paths.add(
+          Path()
+            ..moveTo(0.20, 0.08)
+            ..lineTo(0.20, 0.92),
+        );
         paths.add(
           Path()
             ..moveTo(0.20, 0.08)
@@ -57,16 +78,44 @@ class TracingGuide {
         break;
 
       case 'E':
-        paths.add(Path()..moveTo(0.22, 0.08)..lineTo(0.22, 0.92));
-        paths.add(Path()..moveTo(0.22, 0.08)..lineTo(0.82, 0.08));
-        paths.add(Path()..moveTo(0.22, 0.50)..lineTo(0.70, 0.50));
-        paths.add(Path()..moveTo(0.22, 0.92)..lineTo(0.82, 0.92));
+        paths.add(
+          Path()
+            ..moveTo(0.22, 0.08)
+            ..lineTo(0.22, 0.92),
+        );
+        paths.add(
+          Path()
+            ..moveTo(0.22, 0.08)
+            ..lineTo(0.82, 0.08),
+        );
+        paths.add(
+          Path()
+            ..moveTo(0.22, 0.50)
+            ..lineTo(0.70, 0.50),
+        );
+        paths.add(
+          Path()
+            ..moveTo(0.22, 0.92)
+            ..lineTo(0.82, 0.92),
+        );
         break;
 
       case 'F':
-        paths.add(Path()..moveTo(0.22, 0.08)..lineTo(0.22, 0.92));
-        paths.add(Path()..moveTo(0.22, 0.08)..lineTo(0.82, 0.08));
-        paths.add(Path()..moveTo(0.22, 0.50)..lineTo(0.68, 0.50));
+        paths.add(
+          Path()
+            ..moveTo(0.22, 0.08)
+            ..lineTo(0.22, 0.92),
+        );
+        paths.add(
+          Path()
+            ..moveTo(0.22, 0.08)
+            ..lineTo(0.82, 0.08),
+        );
+        paths.add(
+          Path()
+            ..moveTo(0.22, 0.50)
+            ..lineTo(0.68, 0.50),
+        );
         break;
 
       case 'G':
@@ -81,19 +130,47 @@ class TracingGuide {
         break;
 
       case 'H':
-        paths.add(Path()..moveTo(0.18, 0.08)..lineTo(0.18, 0.92));
-        paths.add(Path()..moveTo(0.82, 0.08)..lineTo(0.82, 0.92));
-        paths.add(Path()..moveTo(0.18, 0.50)..lineTo(0.82, 0.50));
+        paths.add(
+          Path()
+            ..moveTo(0.18, 0.08)
+            ..lineTo(0.18, 0.92),
+        );
+        paths.add(
+          Path()
+            ..moveTo(0.82, 0.08)
+            ..lineTo(0.82, 0.92),
+        );
+        paths.add(
+          Path()
+            ..moveTo(0.18, 0.50)
+            ..lineTo(0.82, 0.50),
+        );
         break;
 
       case 'I':
-        paths.add(Path()..moveTo(0.25, 0.08)..lineTo(0.75, 0.08));
-        paths.add(Path()..moveTo(0.50, 0.08)..lineTo(0.50, 0.92));
-        paths.add(Path()..moveTo(0.25, 0.92)..lineTo(0.75, 0.92));
+        paths.add(
+          Path()
+            ..moveTo(0.25, 0.08)
+            ..lineTo(0.75, 0.08),
+        );
+        paths.add(
+          Path()
+            ..moveTo(0.50, 0.08)
+            ..lineTo(0.50, 0.92),
+        );
+        paths.add(
+          Path()
+            ..moveTo(0.25, 0.92)
+            ..lineTo(0.75, 0.92),
+        );
         break;
 
       case 'J':
-        paths.add(Path()..moveTo(0.30, 0.08)..lineTo(0.75, 0.08));
+        paths.add(
+          Path()
+            ..moveTo(0.30, 0.08)
+            ..lineTo(0.75, 0.08),
+        );
         paths.add(
           Path()
             ..moveTo(0.62, 0.08)
@@ -103,9 +180,21 @@ class TracingGuide {
         break;
 
       case 'K':
-        paths.add(Path()..moveTo(0.20, 0.08)..lineTo(0.20, 0.92));
-        paths.add(Path()..moveTo(0.80, 0.12)..lineTo(0.20, 0.52));
-        paths.add(Path()..moveTo(0.32, 0.44)..lineTo(0.82, 0.92));
+        paths.add(
+          Path()
+            ..moveTo(0.20, 0.08)
+            ..lineTo(0.20, 0.92),
+        );
+        paths.add(
+          Path()
+            ..moveTo(0.80, 0.12)
+            ..lineTo(0.20, 0.52),
+        );
+        paths.add(
+          Path()
+            ..moveTo(0.32, 0.44)
+            ..lineTo(0.82, 0.92),
+        );
         break;
 
       case 'L':
@@ -140,19 +229,22 @@ class TracingGuide {
 
       case 'O':
         paths.add(
-          Path()
-            ..addOval(
-              Rect.fromCenter(
-                center: const Offset(0.50, 0.50),
-                width: 0.72,
-                height: 0.84,
-              ),
+          Path()..addOval(
+            Rect.fromCenter(
+              center: const Offset(0.50, 0.50),
+              width: 0.72,
+              height: 0.84,
             ),
+          ),
         );
         break;
 
       case 'P':
-        paths.add(Path()..moveTo(0.20, 0.08)..lineTo(0.20, 0.92));
+        paths.add(
+          Path()
+            ..moveTo(0.20, 0.08)
+            ..lineTo(0.20, 0.92),
+        );
         paths.add(
           Path()
             ..moveTo(0.20, 0.08)
@@ -162,26 +254,37 @@ class TracingGuide {
 
       case 'Q':
         paths.add(
-          Path()
-            ..addOval(
-              Rect.fromCenter(
-                center: const Offset(0.50, 0.48),
-                width: 0.70,
-                height: 0.80,
-              ),
+          Path()..addOval(
+            Rect.fromCenter(
+              center: const Offset(0.50, 0.48),
+              width: 0.70,
+              height: 0.80,
             ),
+          ),
         );
-        paths.add(Path()..moveTo(0.55, 0.65)..lineTo(0.85, 0.92));
+        paths.add(
+          Path()
+            ..moveTo(0.55, 0.65)
+            ..lineTo(0.85, 0.92),
+        );
         break;
 
       case 'R':
-        paths.add(Path()..moveTo(0.20, 0.08)..lineTo(0.20, 0.92));
+        paths.add(
+          Path()
+            ..moveTo(0.20, 0.08)
+            ..lineTo(0.20, 0.92),
+        );
         paths.add(
           Path()
             ..moveTo(0.20, 0.08)
             ..cubicTo(0.82, 0.08, 0.82, 0.52, 0.20, 0.52),
         );
-        paths.add(Path()..moveTo(0.48, 0.52)..lineTo(0.82, 0.92));
+        paths.add(
+          Path()
+            ..moveTo(0.48, 0.52)
+            ..lineTo(0.82, 0.92),
+        );
         break;
 
       case 'S':
@@ -195,8 +298,16 @@ class TracingGuide {
         break;
 
       case 'T':
-        paths.add(Path()..moveTo(0.15, 0.08)..lineTo(0.85, 0.08));
-        paths.add(Path()..moveTo(0.50, 0.08)..lineTo(0.50, 0.92));
+        paths.add(
+          Path()
+            ..moveTo(0.15, 0.08)
+            ..lineTo(0.85, 0.08),
+        );
+        paths.add(
+          Path()
+            ..moveTo(0.50, 0.08)
+            ..lineTo(0.50, 0.92),
+        );
         break;
 
       case 'U':
@@ -230,8 +341,16 @@ class TracingGuide {
         break;
 
       case 'X':
-        paths.add(Path()..moveTo(0.16, 0.08)..lineTo(0.84, 0.92));
-        paths.add(Path()..moveTo(0.84, 0.08)..lineTo(0.16, 0.92));
+        paths.add(
+          Path()
+            ..moveTo(0.16, 0.08)
+            ..lineTo(0.84, 0.92),
+        );
+        paths.add(
+          Path()
+            ..moveTo(0.84, 0.08)
+            ..lineTo(0.16, 0.92),
+        );
         break;
 
       case 'Y':
@@ -241,7 +360,11 @@ class TracingGuide {
             ..lineTo(0.50, 0.50)
             ..lineTo(0.85, 0.08),
         );
-        paths.add(Path()..moveTo(0.50, 0.50)..lineTo(0.50, 0.92));
+        paths.add(
+          Path()
+            ..moveTo(0.50, 0.50)
+            ..lineTo(0.50, 0.92),
+        );
         break;
 
       case 'Z':
@@ -257,21 +380,32 @@ class TracingGuide {
       // --- DIGITS 0-9 ---
       case '0':
         paths.add(
-          Path()
-            ..addOval(
-              Rect.fromCenter(
-                center: const Offset(0.50, 0.50),
-                width: 0.65,
-                height: 0.84,
-              ),
+          Path()..addOval(
+            Rect.fromCenter(
+              center: const Offset(0.50, 0.50),
+              width: 0.65,
+              height: 0.84,
             ),
+          ),
         );
         break;
 
       case '1':
-        paths.add(Path()..moveTo(0.32, 0.24)..lineTo(0.50, 0.08));
-        paths.add(Path()..moveTo(0.50, 0.08)..lineTo(0.50, 0.92));
-        paths.add(Path()..moveTo(0.24, 0.92)..lineTo(0.76, 0.92));
+        paths.add(
+          Path()
+            ..moveTo(0.32, 0.24)
+            ..lineTo(0.50, 0.08),
+        );
+        paths.add(
+          Path()
+            ..moveTo(0.50, 0.08)
+            ..lineTo(0.50, 0.92),
+        );
+        paths.add(
+          Path()
+            ..moveTo(0.24, 0.92)
+            ..lineTo(0.76, 0.92),
+        );
         break;
 
       case '2':
@@ -301,7 +435,11 @@ class TracingGuide {
             ..lineTo(0.18, 0.65)
             ..lineTo(0.84, 0.65),
         );
-        paths.add(Path()..moveTo(0.70, 0.08)..lineTo(0.70, 0.92));
+        paths.add(
+          Path()
+            ..moveTo(0.70, 0.08)
+            ..lineTo(0.70, 0.92),
+        );
         break;
 
       case '5':
@@ -335,24 +473,22 @@ class TracingGuide {
 
       case '8':
         paths.add(
-          Path()
-            ..addOval(
-              Rect.fromCenter(
-                center: const Offset(0.50, 0.30),
-                width: 0.52,
-                height: 0.44,
-              ),
+          Path()..addOval(
+            Rect.fromCenter(
+              center: const Offset(0.50, 0.30),
+              width: 0.52,
+              height: 0.44,
             ),
+          ),
         );
         paths.add(
-          Path()
-            ..addOval(
-              Rect.fromCenter(
-                center: const Offset(0.50, 0.70),
-                width: 0.62,
-                height: 0.44,
-              ),
+          Path()..addOval(
+            Rect.fromCenter(
+              center: const Offset(0.50, 0.70),
+              width: 0.62,
+              height: 0.44,
             ),
+          ),
         );
         break;
 
@@ -370,17 +506,16 @@ class TracingGuide {
       default:
         // Generic rounded rect fallback
         paths.add(
-          Path()
-            ..addRRect(
-              RRect.fromRectAndRadius(
-                Rect.fromCenter(
-                  center: const Offset(0.5, 0.5),
-                  width: 0.6,
-                  height: 0.8,
-                ),
-                const Radius.circular(0.15),
+          Path()..addRRect(
+            RRect.fromRectAndRadius(
+              Rect.fromCenter(
+                center: const Offset(0.5, 0.5),
+                width: 0.6,
+                height: 0.8,
               ),
+              const Radius.circular(0.15),
             ),
+          ),
         );
         break;
     }
@@ -420,7 +555,8 @@ class TracingGuide {
     double letterWidth = letterHeight * 0.50;
     double gap = letterWidth * 0.72;
 
-    double totalWordWidth = (letterCount * letterWidth) + ((letterCount - 1) * gap);
+    double totalWordWidth =
+        (letterCount * letterWidth) + ((letterCount - 1) * gap);
 
     // If total width exceeds canvas bounds, scale down proportionally
     if (totalWordWidth > maxAvailableWidth) {
@@ -439,7 +575,12 @@ class TracingGuide {
     for (int i = 0; i < letterCount; i++) {
       final char = word[i];
       final charLeft = startX + (i * (letterWidth + gap));
-      final charBounds = Rect.fromLTWH(charLeft, startY, letterWidth, letterHeight);
+      final charBounds = Rect.fromLTWH(
+        charLeft,
+        startY,
+        letterWidth,
+        letterHeight,
+      );
       final normPaths = getNormalizedPathsForChar(char);
       result.addAll(_scalePaths(normPaths, charBounds));
     }
@@ -537,7 +678,8 @@ class TracingGuide {
       double letterWidth = letterHeight * 0.50;
       double gap = letterWidth * 0.72;
 
-      double totalWordWidth = (letterCount * letterWidth) + ((letterCount - 1) * gap);
+      double totalWordWidth =
+          (letterCount * letterWidth) + ((letterCount - 1) * gap);
       if (totalWordWidth > maxAvailableWidth) {
         final scale = maxAvailableWidth / totalWordWidth;
         letterHeight *= scale;
@@ -552,7 +694,12 @@ class TracingGuide {
       for (int i = 0; i < letterCount; i++) {
         final char = word[i];
         final charLeft = startX + (i * (letterWidth + gap));
-        final charBounds = Rect.fromLTWH(charLeft, startY, letterWidth, letterHeight);
+        final charBounds = Rect.fromLTWH(
+          charLeft,
+          startY,
+          letterWidth,
+          letterHeight,
+        );
         final normPaths = getNormalizedPathsForChar(char);
         final scaledCharPaths = _scalePaths(normPaths, charBounds);
         allPaths.addAll(scaledCharPaths);
@@ -681,7 +828,9 @@ class TracingGuide {
         }
         offsetTracker += compList.length;
 
-        final compCoverage = compList.isEmpty ? 1.0 : (compHits / compList.length);
+        final compCoverage = compList.isEmpty
+            ? 1.0
+            : (compHits / compList.length);
         if (compCoverage < minComponentCoverage) {
           allComponentsSatisfied = false;
           break;
@@ -697,13 +846,16 @@ class TracingGuide {
       rejectionReason = 'Trace carefully on the dotted stencil! ✏️';
     } else if (!allComponentsSatisfied) {
       if (targetName.length > 1) {
-        rejectionReason = 'Trace all letters in "$targetName"! You missed some letters! 🔤';
+        rejectionReason =
+            'Trace all letters in "$targetName"! You missed some letters! 🔤';
       } else {
-        rejectionReason = 'Trace all parts of "$targetName"! Don\'t miss any lines! ✏️';
+        rejectionReason =
+            'Trace all parts of "$targetName"! Don\'t miss any lines! ✏️';
       }
     } else if (coverage < minOverallCoverage) {
       final pct = (coverage * 100).toInt();
-      rejectionReason = 'Almost there! You traced $pct% of "$targetName". Trace the rest of the lines! ✨';
+      rejectionReason =
+          'Almost there! You traced $pct% of "$targetName". Trace the rest of the lines! ✨';
     } else {
       isSuccess = true;
     }

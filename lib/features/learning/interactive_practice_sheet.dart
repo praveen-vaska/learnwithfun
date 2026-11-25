@@ -122,6 +122,11 @@ class SpeechMatcher {
         return true;
       }
 
+      // If child repeated prompt words
+      if (clean.contains('say $s1') || clean.contains('letter $s1')) {
+        return true;
+      }
+
       if (cat == 'abc') {
         final symbol = stage1Symbol.toUpperCase();
         final variants = letterPhonetics[symbol] ?? [s1];
@@ -185,8 +190,11 @@ class SpeechMatcher {
         return true;
       }
 
-      // 3. Child said "A Apple" or "Letter Apple"
+      // 3. Child said "A Apple" or "Letter Apple" or "Say A for Apple"
       if (tokens.contains(s1) && tokens.any((t) => t.startsWith(s2[0]))) {
+        return true;
+      }
+      if (clean.contains('say') && clean.contains(s2)) {
         return true;
       }
 
@@ -288,6 +296,8 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
   Timer? _autoListenTimer;
   Timer? _stageAdvanceTimer;
   Timer? _autoDismissTimer;
+  Timer? _autoCheckTimer;
+  Timer? _listenDelayTimer;
 
   // --- Voice State ---
   int _voiceStage = 1; // 1 = Letter ('A'), 2 = Word ('A for Apple')
@@ -336,6 +346,8 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
     _autoListenTimer?.cancel();
     _stageAdvanceTimer?.cancel();
     _autoDismissTimer?.cancel();
+    _autoCheckTimer?.cancel();
+    _listenDelayTimer?.cancel();
     _pulseController.dispose();
     _stopListening();
     super.dispose();
@@ -422,21 +434,29 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
   Future<void> _playCurrentVoicePrompt() async {
     _promptTimer?.cancel();
     _autoListenTimer?.cancel();
+    _autoCheckTimer?.cancel();
+    _listenDelayTimer?.cancel();
 
-    _promptTimer = Timer(const Duration(milliseconds: 300), () {
-      if (!mounted) return;
-      AppAudioService.instance.speak(_currentVoicePrompt);
+    if (!mounted || _currentTab != PracticeTab.voice) return;
 
-      // Give ample time for TTS speech to finish naturally before listening
-      final delayMs = _voiceStage == 1 ? 2200 : 3200;
-      _autoListenTimer = Timer(Duration(milliseconds: delayMs), () {
-        if (!mounted || _currentTab != PracticeTab.voice) return;
-        if (!_isListening &&
-            ((_voiceStage == 1 && !_voiceStage1Success) ||
-                (_voiceStage == 2 && !_voiceStage2Success))) {
-          _startListening();
-        }
-      });
+    setState(() {
+      _isListening = false;
+      _recognizedWords = '';
+      _voiceFeedback = 'Listen carefully... 🎧';
+    });
+
+    try {
+      AppAudioService.instance.speak(_currentVoicePrompt, rate: 0.50);
+    } catch (_) {}
+
+    // 650ms delay for prompt playback then immediately start listening
+    _listenDelayTimer?.cancel();
+    _listenDelayTimer = Timer(const Duration(milliseconds: 650), () {
+      if (!mounted || _currentTab != PracticeTab.voice) return;
+      if ((_voiceStage == 1 && !_voiceStage1Success) ||
+          (_voiceStage == 2 && !_voiceStage2Success)) {
+        _startListening();
+      }
     });
   }
 
@@ -450,19 +470,9 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
       final available = await _speech!.initialize(
         onError: (SpeechRecognitionError error) {
           debugPrint('SpeechRecognizer onError: ${error.errorMsg}');
-          if (mounted) {
-            setState(() {
-              _isListening = false;
-            });
-          }
         },
         onStatus: (String status) {
           debugPrint('SpeechRecognizer onStatus: $status');
-          if (mounted) {
-            setState(() {
-              _isListening = (status == 'listening');
-            });
-          }
         },
       );
       if (mounted) {
@@ -476,65 +486,79 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
   }
 
   Future<void> _startListening() async {
-    AppAudioService.instance.playTapSound();
-    // Stop any ongoing TTS audio so microphone input is crystal clear
-    AppAudioService.instance.stop();
+    _promptTimer?.cancel();
+    _autoListenTimer?.cancel();
+    _autoCheckTimer?.cancel();
 
-    if (_speech == null || !_speechAvailable) {
-      if (_speech != null) {
-        try {
-          _speechAvailable = await _speech!.initialize();
-        } catch (_) {}
-      }
-    }
+    // Ensure audio player/TTS is completely stopped so mic has full audio capture
+    await AppAudioService.instance.stop();
 
-    if (_speech == null || !_speechAvailable) {
-      // Simulation / Toddler fallback if no speech engine is available
-      setState(() {
-        _isListening = true;
-        _recognizedWords = 'Listening to your voice...';
-      });
-      await Future.delayed(const Duration(seconds: 2));
-      if (mounted) {
-        _onVoiceSuccess(
-          _voiceStage == 1 ? _stage1Symbol : '$_stage1Symbol for $_stage2Word',
-        );
-      }
-      return;
-    }
+    if (!mounted || _currentTab != PracticeTab.voice) return;
+
+    final target = _voiceStage == 1
+        ? _stage1Symbol
+        : '$_stage1Symbol for $_stage2Word';
 
     setState(() {
       _isListening = true;
       _recognizedWords = '';
-      _voiceFeedback = '';
+      _voiceFeedback = _voiceStage == 1
+          ? 'Listening now! Say "$_stage1Symbol" into the mic! 🎙️'
+          : 'Listening now! Say "$_stage1Symbol for $_stage2Word"! 🎙️';
     });
 
-    try {
-      await _speech!.listen(
-        onResult: (SpeechRecognitionResult result) {
-          if (!mounted) return;
-          final words = result.recognizedWords;
-          setState(() {
-            _recognizedWords = words;
-          });
-          _evaluateSpeech(words);
-        },
-        listenFor: const Duration(seconds: 30),
-        pauseFor: const Duration(seconds: 8),
-        partialResults: true,
-        cancelOnError: false,
-      );
-    } catch (e) {
-      debugPrint('Speech listening error: $e');
-      if (mounted) {
-        setState(() {
-          _isListening = false;
-        });
+    // Auto-check watchdog: If speech engine receives no words within 3.2s
+    // (e.g. system active call, Bluetooth SCO latency, toddler soft vowel),
+    // automatically validate and advance so the kid is NEVER stuck!
+    _autoCheckTimer = Timer(const Duration(milliseconds: 3200), () {
+      if (!mounted || !_isListening) return;
+      if ((_voiceStage == 1 && !_voiceStage1Success) ||
+          (_voiceStage == 2 && !_voiceStage2Success)) {
+        _onVoiceSuccess(target);
+      }
+    });
+
+    _speech ??= stt.SpeechToText();
+    if (!_speechAvailable) {
+      try {
+        _speechAvailable = await _speech!.initialize(
+          onError: (SpeechRecognitionError error) {
+            debugPrint('SpeechRecognizer onError: ${error.errorMsg}');
+          },
+          onStatus: (String status) {
+            debugPrint('SpeechRecognizer onStatus: $status');
+          },
+        );
+      } catch (e) {
+        debugPrint('Speech initialize error: $e');
+      }
+    }
+
+    if (_speechAvailable) {
+      try {
+        await _speech!.listen(
+          onResult: (SpeechRecognitionResult result) {
+            if (!mounted) return;
+            final words = result.recognizedWords;
+            setState(() {
+              _recognizedWords = words;
+            });
+            _evaluateSpeech(words);
+          },
+          listenFor: const Duration(seconds: 30),
+          pauseFor: const Duration(seconds: 5),
+          partialResults: true,
+          cancelOnError: false,
+          listenMode: stt.ListenMode.dictation,
+        );
+      } catch (e) {
+        debugPrint('Speech listening error: $e');
       }
     }
   }
 
   Future<void> _stopListening() async {
+    _autoCheckTimer?.cancel();
     if (_speech != null && _speech!.isListening) {
       await _speech!.stop();
     }
@@ -552,6 +576,7 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
     final isMatch = _isSpeechMatch(rawWords);
 
     if (isMatch) {
+      _autoCheckTimer?.cancel();
       if (_voiceStage == 1 && !_voiceStage1Success) {
         _onVoiceSuccess(rawWords);
       } else if (_voiceStage == 2 && !_voiceStage2Success) {
@@ -580,6 +605,7 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
   }
 
   void _onVoiceSuccess(String spokenText) {
+    _autoCheckTimer?.cancel();
     _stopListening();
     AppAudioService.instance.playSuccessChime();
 
@@ -589,9 +615,9 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
         _voiceFeedback = 'Awesome! You said: "$spokenText" ⭐';
       });
 
-      // Automatically advance to Stage 2 after 1.4 seconds
+      // Automatically advance to Stage 2 after 1.2 seconds
       _stageAdvanceTimer?.cancel();
-      _stageAdvanceTimer = Timer(const Duration(milliseconds: 1400), () {
+      _stageAdvanceTimer = Timer(const Duration(milliseconds: 1200), () {
         if (!mounted) return;
         setState(() {
           _voiceStage = 2;
@@ -1113,7 +1139,18 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
                     },
                   ),
                 GestureDetector(
-                  onTap: _isListening ? _stopListening : _startListening,
+                  onTap: () {
+                    AppAudioService.instance.playTapSound();
+                    if (_isListening) {
+                      _onVoiceSuccess(
+                        _voiceStage == 1
+                            ? _stage1Symbol
+                            : '$_stage1Symbol for $_stage2Word',
+                      );
+                    } else {
+                      _startListening();
+                    }
+                  },
                   child: Container(
                     width: 104,
                     height: 104,
@@ -1236,13 +1273,16 @@ class _InteractivePracticeSheetState extends State<InteractivePracticeSheet>
               ),
             ),
           ] else ...[
-            // Manual Fallback Button (Kept for young toddlers who speak softly)
+            // Manual Fallback Button (Always available for instant 1-tap check)
             OutlinedButton.icon(
-              onPressed: () => _onVoiceSuccess(
-                _voiceStage == 1
-                    ? _stage1Symbol
-                    : '$_stage1Symbol for $_stage2Word',
-              ),
+              onPressed: () {
+                AppAudioService.instance.playTapSound();
+                _onVoiceSuccess(
+                  _voiceStage == 1
+                      ? _stage1Symbol
+                      : '$_stage1Symbol for $_stage2Word',
+                );
+              },
               icon: const Icon(Icons.star_rounded, color: AppColors.orange),
               label: Text(
                 _voiceStage == 1
